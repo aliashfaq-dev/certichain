@@ -22,7 +22,7 @@ async function hashFile(file) {
 
 export default function App() {
   const [wallet,setWallet] = useState("");
-  const [contractAddress,setContractAddress] = useState(CONTRACT_ADDRESS);
+  const [contractAddress,setContractAddress] = useState(new URLSearchParams(window.location.search).get("contract") || CONTRACT_ADDRESS);
   const [certificateNumber,setCertificateNumber] = useState("");
   const [recipient,setRecipient] = useState("");
   const [file,setFile] = useState(null);
