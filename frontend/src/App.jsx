@@ -28,6 +28,7 @@ export default function App() {
   const [file,setFile] = useState(null);
   const [result,setResult] = useState(null);
   const [qr,setQr] = useState("");
+  const [shareUrl,setShareUrl] = useState("");
   const [busy,setBusy] = useState(false);
   const [notice,setNotice] = useState("");
   const [tab,setTab] = useState("verify");
@@ -62,6 +63,7 @@ export default function App() {
       const data={certificateId:id,status:valid?"VALID":"REVOKED",recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
       setResult(data);
       const url=new URL(window.location.href); url.searchParams.set("cert",id); url.searchParams.set("contract",contractAddress);
+      setShareUrl(url.toString());
       setQr(await QRCode.toDataURL(url.toString(),{width:260,margin:2}));
     } catch(error) { setNotice(error.shortMessage || error.reason || error.message || "Verification failed."); }
     finally { setBusy(false); }
@@ -156,7 +158,7 @@ export default function App() {
           <div className="status-line"><span className={result.status==="VALID"?"status status-valid":"status status-revoked"}>{result.status==="VALID"?"✓ VALID CERTIFICATE":"✕ REVOKED CERTIFICATE"}</span><span className="muted">ON-CHAIN RECORD</span></div>
           <div className="details-grid"><div><small>Recipient wallet</small><strong>{short(result.recipient)}</strong></div><div><small>Issuing wallet</small><strong>{short(result.issuer)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Document hash (SHA-256)</small><strong>{short(result.documentHash)}</strong></div></div>
           <div className="cid-row"><span>IPFS document</span><a href={`https://gateway.pinata.cloud/ipfs/${result.ipfsCid}`} target="_blank" rel="noreferrer">{short(result.ipfsCid)} ↗</a></div>
-          {qr && <div className="qr-area"><img src={qr} alt="Certificate verification QR code"/><div><b>Share verification</b><p>Scan this QR code to open this certificate's public verification link.</p><button className="button button-outline" onClick={()=>navigator.clipboard.writeText(window.location.href)}>Copy link</button></div></div>}
+          {qr && <div className="qr-area"><img src={qr} alt="Certificate verification QR code"/><div><b>Share verification</b><p>Scan this QR code to open this certificate's public verification link.</p><button className="button button-outline" onClick={()=>navigator.clipboard.writeText(shareUrl)}>Copy link</button></div></div>}
           {result.status==="VALID" && wallet.toLowerCase()===result.issuer.toLowerCase() && <button className="button button-danger" onClick={revoke} disabled={busy}>Revoke this certificate</button>}
         </div>}
       </div> : <form className="panel" onSubmit={issue}>
