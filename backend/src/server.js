@@ -6,6 +6,8 @@ import multer from "multer";
 import { rateLimit } from "express-rate-limit";
 
 const app = express();
+// Vercel sits behind a trusted proxy; this lets express-rate-limit use the client IP.
+app.set("trust proxy", 1);
 const port = Number(process.env.PORT || 4000);
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || "http://localhost:5173,https://certichain-lovat.vercel.app").split(",").map((value) => value.trim());
 
@@ -131,16 +133,30 @@ app.post("/api/ipfs/upload", uploadLimiter, upload.single("file"), async (req, r
     }
 
     if (!response.ok) {
-      // Log the provider response for local debugging, but never log the JWT.
+      // On auth failures, separately test whether the JWT itself is accepted.
+      // Never log or return the JWT.
+      let authTestStatus = null;
+      if (response.status === 401) {
+        try {
+          const authTest = await fetch("https://api.pinata.cloud/data/testAuthentication", {
+            headers: { Authorization: `Bearer ${process.env.PINATA_JWT}` }
+          });
+          authTestStatus = authTest.status;
+        } catch {
+          authTestStatus = "network-error";
+        }
+      }
       console.error("Pinata V3 upload failed:", {
         status: response.status,
-        statusText: response.statusText,
+        authTestStatus,
         response: payload
       });
-      return res.status(502).json({
-        error: payload.error || payload.message || payload.detail || "Pinata upload failed.",
-        providerStatus: response.status
-      });
+      const errorMessage = response.status === 401 && authTestStatus === 401
+        ? "Pinata rejected the configured JWT. Replace PINATA_JWT with a currently active JWT from Pinata."
+        : response.status === 401 && authTestStatus === 200
+          ? "Pinata accepts this JWT, but it is not authorized for V3 file uploads. Check the API key's Files write permission."
+          : payload.error || payload.message || payload.detail || "Pinata upload failed.";
+      return res.status(502).json({ error: errorMessage, providerStatus: response.status });
     }
 
     const fileData = payload.data || payload;
