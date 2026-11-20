@@ -13,7 +13,7 @@ app.disable("x-powered-by");
 app.use(helmet());
 app.use(cors({ origin(origin, callback) {
   const isCertiChainVercelOrigin = typeof origin === "string" &&
-    /^https:\\/\\/certichain(?:-[a-z0-9]+)?-ali-4be7\\.vercel\\.app$/i.test(origin);
+    /^https:\/\/certichain(?:-[a-z0-9]+)?-ali-4be7\.vercel\.app$/i.test(origin);
   if (!origin || allowedOrigins.includes(origin) || isCertiChainVercelOrigin) return callback(null, true);
   return callback(new Error("Origin is not allowed by CORS."));
 } }));
@@ -49,7 +49,7 @@ const emailLimiter = rateLimit({
 
 app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
   const { email, universityName, certificateNumber, certificateId, verificationUrl, documentUrl, transactionHash } = req.body || {};
-  const validEmail = typeof email === "string" && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim());
+  const validEmail = typeof email === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   if (!validEmail) return res.status(400).json({ error: "A valid student email address is required." });
   if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
     return res.status(503).json({ error: "Email service is not configured. Add RESEND_API_KEY and RESEND_FROM_EMAIL to the backend Vercel project." });
