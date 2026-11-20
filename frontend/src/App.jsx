@@ -140,7 +140,7 @@ export default function App() {
   return <main className="app-shell">
     <nav className="topbar">
       <a className="brand" href="/">Certi<span>Chain</span><small>BLOCKCHAIN CREDENTIALS</small></a>
-      <div className="nav-actions"><span className="network"><i/> {CHAIN_ID===31337?"Anvil Local":CHAIN_ID===11155111?"Sepolia Testnet":`Chain ${CHAIN_ID}`}</span>{CHAIN_ID===11155111 && isConfigured && <a className="button button-explorer" href={`https://sepolia.etherscan.io/address/${contractAddress}#code`} target="_blank" rel="noreferrer">Verify source on Etherscan ↗</a>}<button className="button button-outline" onClick={connectWallet}>{wallet?short(wallet):"Connect wallet"}</button></div>
+      <div className="nav-actions"><span className="network"><i/> {CHAIN_ID===31337?"Anvil Local":CHAIN_ID===11155111?"Sepolia Testnet":`Chain ${CHAIN_ID}`}</span>{CHAIN_ID===11155111 && isConfigured && <a className="button button-explorer" href={`https://sepolia.etherscan.io/verifyContract?a=${contractAddress}`} target="_blank" rel="noreferrer">Verify source on Etherscan ↗</a>}<button className="button button-outline" onClick={connectWallet}>{wallet?short(wallet):"Connect wallet"}</button></div>
     </nav>
     <section className="hero">
       <div className="eyebrow"><span/> TRUST, WITHOUT THE PAPER TRAIL</div>
