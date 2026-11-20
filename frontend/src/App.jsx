@@ -136,7 +136,7 @@ export default function App() {
         cert=await contract.getCertificate(certificateId);
       } catch {
         setNotice("Document hash se record search ho raha hai…");
-        const events=await contract.queryFilter(contract.filters.CertificateIssued(),0,"latest");
+        const latest=await readProvider.getBlockNumber(); const events=[]; for(let fromBlock=0;fromBlock<=latest;fromBlock+=2000){events.push(...await contract.queryFilter(contract.filters.CertificateIssued(),fromBlock,Math.min(fromBlock+1999,latest)));}
         const match=events.find(event=>String(event.args.documentHash).toLowerCase()===certificateId.toLowerCase());
         if (!match) throw new Error("Is hash se koi certificate record nahi mila. Certificate ID ya document hash dobara check karo.");
         certificateId=match.args.certificateId;
@@ -215,7 +215,7 @@ export default function App() {
         if (!emailResponse.ok) {
           setNotice(`Certificate blockchain par issue ho gaya, lekin email send nahi hui: ${emailData.error || "Email service configuration check karo."}`);
         } else {
-          setNotice("Certificate successfully issue ho gaya! Student ko email notification aur verification link bhej diya gaya hai.");
+          setNotice("Certificate issued successfully. The student has been emailed the verification link and portal login details.");
         }
       } catch(emailError) {
         setNotice(`Certificate blockchain par issue ho gaya, lekin email service se connection nahi hua: ${emailError.message}`);
@@ -398,7 +398,7 @@ export default function App() {
             <label htmlFor="cert-number">Certificate number (unique within your university)</label><input id="cert-number" value={certificateNumber} onChange={e=>setCertificateNumber(e.target.value)} placeholder="e.g. 2026-CS-0001" required/>
             <label htmlFor="recipient-email">Student email address <span className="required-mark">REQUIRED</span></label><input id="recipient-email" type="email" value={recipientEmail} onChange={e=>setRecipientEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" required/>
             <label htmlFor="recipient">Student wallet address <span className="optional-mark">OPTIONAL</span></label><input id="recipient" value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="0x student wallet (optional)"/>
-            <p className="file-note">Student ke paas wallet nahi hai? Is field ko blank chhor do. Email se private recipient reference generate hoga; email blockchain par store nahi hogi.</p>
+            <p className="file-note">If the student does not have a wallet, leave this field blank. A private recipient reference will be generated automatically.</p>
             <label htmlFor="document">Certificate document (PDF, PNG or JPG · max 10 MB)</label><input id="document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={e=>setFile(e.target.files?.[0]||null)} required/>
             {file && <p className="file-note">Selected: {file.name} · {(file.size/1024/1024).toFixed(2)} MB</p>}
             <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Processing…":"Upload & issue certificate"}</button>
@@ -408,7 +408,7 @@ export default function App() {
       </div></section>
     </>}
 
-    {notice && <div className="notice" role="status">{notice}</div>}
+    {notice && <div className="alert-backdrop" role="presentation" onClick={()=>setNotice("")}><section className="custom-alert" role="alertdialog" aria-modal="true" aria-label="Notification" onClick={event=>event.stopPropagation()}><div className={/failed|error|invalid|denied|not found|unavailable|could not|rejected|expired|required|must be|not configured/i.test(notice)?"alert-icon alert-error":"alert-icon"}>{/failed|error|invalid|denied|not found|unavailable|could not|rejected|expired|required|must be|not configured/i.test(notice)?"!":"✓"}</div><h3>{/failed|error|invalid|denied|not found|unavailable|could not|rejected|expired|required|must be|not configured/i.test(notice)?"Something went wrong":"Notification"}</h3><p>{notice}</p><button className="button button-primary" onClick={()=>setNotice("")}>Got it</button></section></div>}
     <footer className="footer"><span>CertiChain © 2026</span><span>Ethereum-compatible network · IPFS document storage</span></footer>
   </main>;
 }
