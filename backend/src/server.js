@@ -97,7 +97,7 @@ const emailLimiter = rateLimit({
 app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
   const { email, universityName, certificateNumber, certificateId, verificationUrl, documentUrl, transactionHash } = req.body || {};
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(normalizedEmail)) return res.status(400).json({ error: "A valid student email address is required." });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return res.status(400).json({ error: "A valid student email address is required." });
   if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) return res.status(503).json({ error: "Email service is not configured." });
   if (typeof certificateId !== "string" || !/^0x[0-9a-f]{64}$/i.test(certificateId) ||
       typeof verificationUrl !== "string" || !verificationUrl.startsWith("https://") ||
