@@ -16,8 +16,9 @@ const port = Number(process.env.PORT || 4000);
 let mongoConnection;
 async function connectMongo() {
   if (mongoose.connection.readyState === 1) return;
-  if (!process.env.MONGODB_URI) throw new Error("Student database is not configured. Add MONGODB_URI to the backend environment.");
-  if (!mongoConnection) mongoConnection = mongoose.connect(process.env.MONGODB_URI, { serverSelectionTimeoutMS: 8000 });
+  const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  if (!mongoUri) throw new Error("Student database is not configured. Add MONGO_URI to the backend environment.");
+  if (!mongoConnection) mongoConnection = mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 8000 });
   await mongoConnection;
 }
 const Student = mongoose.models.Student || mongoose.model("Student", new mongoose.Schema({
