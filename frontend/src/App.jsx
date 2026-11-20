@@ -51,6 +51,7 @@ export default function App() {
   const [qr,setQr] = useState("");
   const [shareUrl,setShareUrl] = useState("");
   const [studentCertificates,setStudentCertificates] = useState([]);
+  const [emailCertificates,setEmailCertificates] = useState([]);
   const [studentEmail,setStudentEmail] = useState("");
   const [studentPassword,setStudentPassword] = useState("");
   const [studentToken,setStudentToken] = useState(() => sessionStorage.getItem("certichain-student-token") || "");
@@ -63,14 +64,14 @@ export default function App() {
   const contractUrl = `${EXPLORER}/address/${contractAddress}`;
 
   function getReadContract() {
-    if (!isConfigured) throw new Error("Admin ko pehle VITE_CONTRACT_ADDRESS configure karna hoga.");
+    if (!isConfigured) throw new Error("Configure VITE_CONTRACT_ADDRESS before using the admin portal.");
     const provider = readProvider || (window.ethereum ? new BrowserProvider(window.ethereum) : null);
-    if (!provider) throw new Error("Public RPC configured nahi hai. VITE_RPC_URL set karo.");
+    if (!provider) throw new Error("Public RPC is not configured. Set VITE_RPC_URL.");
     return new Contract(contractAddress,ABI,provider);
   }
 
   async function getWalletSigner() {
-    if (!window.ethereum) throw new Error("MetaMask install karo phir wallet connect karo.");
+    if (!window.ethereum) throw new Error("Install MetaMask to connect a wallet.");
     let chainId = await window.ethereum.request({method:"eth_chainId"});
     if (Number(chainId) !== CHAIN_ID) {
       try {
@@ -86,11 +87,11 @@ export default function App() {
         } else { throw switchError; }
       }
       chainId = await window.ethereum.request({method:"eth_chainId"});
-      if (Number(chainId) !== CHAIN_ID) throw new Error(`MetaMask ko ${networkName} par switch karo.`);
+      if (Number(chainId) !== CHAIN_ID) throw new Error(`Switch MetaMask to ${networkName}.`);
     }
     const provider = new BrowserProvider(window.ethereum);
     const accounts = await provider.send("eth_requestAccounts",[]);
-    if (!accounts.length) throw new Error("Wallet account select nahi hua.");
+    if (!accounts.length) throw new Error("No wallet account was selected.");
     setWallet(accounts[0]);
     return {provider,signer:await provider.getSigner(),account:accounts[0]};
   }
@@ -118,13 +119,13 @@ export default function App() {
       const profile={universityId:university.universityId,name:university.name,active:university.active};
       setUniversityProfile(profile);
       if (!profile.active) {
-        setNotice("Access denied: ye university wallet registered nahi hai ya deactivate hai.");
+        setNotice("Access denied: this university wallet is not registered or has been deactivated.");
         return false;
       }
       return true;
     } catch(error) {
       setOwner("");
-      setNotice(error.shortMessage || error.message || "Admin status check nahi ho saka.");
+      setNotice(error.shortMessage || error.message || "Could not verify admin access.");
       return false;
     }
   }
@@ -139,10 +140,10 @@ export default function App() {
       try {
         cert=await contract.getCertificate(certificateId);
       } catch {
-        setNotice("Document hash se record search ho raha hai…");
+        setNotice("Searching blockchain records…");
         const latest=await readProvider.getBlockNumber(); const events=[]; for(let fromBlock=0;fromBlock<=latest;fromBlock+=2000){events.push(...await contract.queryFilter(contract.filters.CertificateIssued(),fromBlock,Math.min(fromBlock+1999,latest)));}
         const match=events.find(event=>String(event.args.documentHash).toLowerCase()===certificateId.toLowerCase());
-        if (!match) throw new Error("Is hash se koi certificate record nahi mila. Certificate ID ya document hash dobara check karo.");
+        if (!match) throw new Error("No certificate was found for this hash. Check the certificate ID or document hash.");
         certificateId=match.args.certificateId;
         cert=await contract.getCertificate(certificateId);
       }
@@ -165,15 +166,15 @@ export default function App() {
       const {signer,account}=await getWalletSigner();
       const contract=new Contract(contractAddress,ABI,signer);
       const university=await contract.getUniversity(account);
-      if (!university.active) throw new Error("Is wallet ko platform owner ne university issuer ke taur par authorize nahi kiya.");
+      if (!university.active) throw new Error("This wallet has not been authorized as a university issuer by the platform owner.");
       const universityId=university.universityId;
       setUniversityProfile({universityId,name:university.name,active:university.active});
-      if (!file) throw new Error("Certificate PDF ya image select karo.");
-      if (!certificateNumber.trim()) throw new Error("Unique certificate number enter karo.");
+      if (!file) throw new Error("Please select a certificate PDF or image.");
+      if (!certificateNumber.trim()) throw new Error("Please enter a unique certificate number.");
       const normalizedEmail=recipientEmail.trim().toLowerCase();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new Error("Valid student email address required hai.");
-      if (recipient.trim() && !isAddress(recipient.trim())) throw new Error("Student wallet address valid nahi hai. Is field ko blank bhi chhor sakte ho.");
-      if (file.size>10*1024*1024) throw new Error("File maximum 10 MB honi chahiye.");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new Error("A valid student email address is required.");
+      if (recipient.trim() && !isAddress(recipient.trim())) throw new Error("Enter a valid student wallet address or leave the field blank.");
+      if (file.size>10*1024*1024) throw new Error("The file must be smaller than 10 MB.");
       const id=keccak256(toUtf8Bytes(`${universityId}:${certificateNumber.trim()}`));
       // If a student has no wallet, create a random opaque on-chain recipient reference.
       // Do not derive it from the email: the email itself and any reversible identifier stay off-chain.
@@ -181,19 +182,19 @@ export default function App() {
       const generatedRecipient="0x"+Array.from(randomRecipientBytes,byte=>byte.toString(16).padStart(2,"0")).join("");
       const recipientAddress=recipient.trim() || generatedRecipient;
       const documentHash=await hashFile(file);
-      setNotice("Certificate IPFS par upload ho raha hai…");
+      setNotice("Uploading certificate to IPFS…");
       const form=new FormData(); form.append("file",file);
       let uploadResponse;
       try {
         uploadResponse=await fetch(`${API_URL.replace(/\/$/,"")}/api/ipfs/upload`,{method:"POST",body:form});
       } catch (networkError) {
-        throw new Error(`Backend se connection nahi ho raha (${API_URL}). Backend deployment, CORS aur /api/health check karo. Details: ${networkError.message}`);
+        throw new Error(`Could not connect to the backend (${API_URL}). Check the backend deployment, CORS, and /api/health endpoint. Details: ${networkError.message}`);
       }
       const uploadData=await uploadResponse.json().catch(()=>({}));
-      if (!uploadResponse.ok) throw new Error(uploadData.error || `IPFS upload failed (HTTP ${uploadResponse.status}). Backend PINATA_JWT check karo.`);
-      setNotice("MetaMask mein issue transaction confirm karo…");
+      if (!uploadResponse.ok) throw new Error(uploadData.error || `IPFS upload failed (HTTP ${uploadResponse.status}). Check the backend PINATA_JWT configuration.`);
+      setNotice("Confirm the issuance transaction in MetaMask…");
       const tx=await contract.issueCertificate(universityId,id,recipientAddress,documentHash,uploadData.cid);
-      setNotice(`Transaction submitted: ${tx.hash}. Confirmation ka wait ho raha hai…`);
+      setNotice(`Transaction submitted: ${tx.hash}. Waiting for transaction confirmation…`);
       await tx.wait();
       setCertificateNumber(""); setRecipient(""); setRecipientEmail(""); setFile(null);
       setLookupId(id); setPage("verify");
@@ -217,12 +218,12 @@ export default function App() {
         });
         const emailData=await emailResponse.json().catch(()=>({}));
         if (!emailResponse.ok) {
-          setNotice(`Certificate blockchain par issue ho gaya, lekin email send nahi hui: ${emailData.error || "Email service configuration check karo."}`);
+          setNotice(`Certificate was issued on the blockchain, but the email could not be sent: ${emailData.error || "Check the email service configuration."}`);
         } else {
           setNotice("Certificate issued successfully. The student has been emailed the verification link and portal login details.");
         }
       } catch(emailError) {
-        setNotice(`Certificate blockchain par issue ho gaya, lekin email service se connection nahi hua: ${emailError.message}`);
+        setNotice(`Certificate was issued on the blockchain, but the email service could not be reached: ${emailError.message}`);
       }
     } catch(error) { setNotice(error.shortMessage || error.reason || error.message || "Issuance failed."); }
     finally { setBusy(false); }
@@ -230,7 +231,7 @@ export default function App() {
 
   async function loadEmailCertificates(token=studentToken) {
     if (!token) return;
-    const response=await fetch(API_URL+"/api/student/certificates",{headers:{Authorization:"Bearer "+token}});
+    const response=await fetch(API_URL.replace(/\/$/,"")+"/api/student/certificates",{headers:{Authorization:"Bearer "+token}});
     const payload=await response.json().catch(()=>({}));
     if (!response.ok) throw new Error(payload.error || "Could not load student certificates.");
     const contract=getReadContract();
@@ -239,13 +240,13 @@ export default function App() {
       const university=await contract.getUniversity(cert.issuer);
       return {certificateId:item.certificateId,universityId:cert.universityId,universityName:university.name||item.universityName,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
     }));
-    setStudentCertificates(records.reverse());
+    setEmailCertificates(records.reverse());
   }
 
   async function loginStudent(event) {
     event.preventDefault(); setBusy(true); setNotice("");
     try {
-      const response=await fetch(API_URL+"/api/student/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:studentEmail.trim().toLowerCase(),password:studentPassword})});
+      const response=await fetch(API_URL.replace(/\/$/,"")+"/api/student/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:studentEmail.trim().toLowerCase(),password:studentPassword})});
       const payload=await response.json().catch(()=>({}));
       if (!response.ok) throw new Error(payload.error || "Student login failed.");
       sessionStorage.setItem("certichain-student-token",payload.token);
@@ -258,11 +259,11 @@ export default function App() {
 
   function logoutStudent() {
     sessionStorage.removeItem("certichain-student-token"); sessionStorage.removeItem("certichain-student-email");
-    setStudentToken(""); setStudentAccountEmail(""); setStudentCertificates([]); setNotice("You have been signed out.");
+    setStudentToken(""); setStudentAccountEmail(""); setEmailCertificates([]); setNotice("You have been signed out.");
   }
 
   async function loadStudentCertificates(account=wallet) {
-    if (!account) { setNotice("Apna student wallet connect karo."); return; }
+    if (!account) { setNotice("Connect your student wallet."); return; }
     setBusy(true); setNotice("");
     try {
       const contract=getReadContract();
@@ -274,8 +275,8 @@ export default function App() {
         return {certificateId:id,universityId:cert.universityId,universityName:university.name,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
       }));
       setStudentCertificates(records.reverse());
-      if (!records.length) setNotice("Is wallet address ke liye abhi koi certificate nahi mila.");
-    } catch(error) { setNotice(error.shortMessage || error.message || "Certificates load nahi ho sake. RPC limits check karo."); }
+      if (!records.length) setNotice("No certificates were found for this wallet address.");
+    } catch(error) { setNotice(error.shortMessage || error.message || "Could not load certificates. Check the RPC provider limits."); }
     finally { setBusy(false); }
   }
 
@@ -285,15 +286,15 @@ export default function App() {
       const {signer}=await getWalletSigner();
       const contract=new Contract(contractAddress,ABI,signer);
       const contractOwner=await contract.owner();
-      if (contractOwner.toLowerCase()!==wallet.toLowerCase()) throw new Error("Sirf platform owner university register kar sakta hai.");
-      if (!isAddress(universityWalletInput)) throw new Error("Valid university wallet address enter karo.");
-      if (!universityCodeInput.trim() || !universityNameInput.trim()) throw new Error("University code aur name dono required hain.");
+      if (contractOwner.toLowerCase()!==wallet.toLowerCase()) throw new Error("Only the platform owner can register a university.");
+      if (!isAddress(universityWalletInput)) throw new Error("Enter a valid university wallet address.");
+      if (!universityCodeInput.trim() || !universityNameInput.trim()) throw new Error("Both university code and name are required.");
       const universityId=keccak256(toUtf8Bytes(universityCodeInput.trim().toUpperCase()));
       const tx=await contract.registerUniversity(universityWalletInput,universityId,universityNameInput.trim());
       setNotice(`University registration submitted: ${tx.hash}. Confirmation ka wait…`);
       await tx.wait();
       setUniversityWalletInput(""); setUniversityCodeInput(""); setUniversityNameInput("");
-      setNotice("University successfully authorize ho gayi. Ab university apne wallet se certificates issue kar sakti hai.");
+      setNotice("University authorized successfully. It can now issue certificates from its wallet.");
     } catch(error) { setNotice(error.shortMessage || error.reason || error.message || "University registration failed."); }
     finally { setBusy(false); }
   }
@@ -303,8 +304,8 @@ export default function App() {
     try {
       const {signer}=await getWalletSigner();
       const contract=new Contract(contractAddress,ABI,signer);
-      if ((await contract.owner()).toLowerCase()!==wallet.toLowerCase()) throw new Error("Sirf platform owner university status change kar sakta hai.");
-      if (!isAddress(statusWalletInput)) throw new Error("Valid university wallet address enter karo.");
+      if ((await contract.owner()).toLowerCase()!==wallet.toLowerCase()) throw new Error("Only the platform owner can change university status.");
+      if (!isAddress(statusWalletInput)) throw new Error("Enter a valid university wallet address.");
       const tx=await contract.setUniversityStatus(statusWalletInput,statusActive);
       setNotice(`University status transaction submitted: ${tx.hash}`);
       await tx.wait();
@@ -324,7 +325,7 @@ export default function App() {
       setNotice(`Revocation submitted: ${tx.hash}. Confirmation ka wait…`);
       await tx.wait();
       await verify(result.certificateId);
-      setNotice("Certificate blockchain par revoke ho gaya.");
+      setNotice("Certificate revoked successfully on the blockchain.");
     } catch(error) { setNotice(error.shortMessage || error.reason || error.message || "Revocation failed."); }
     finally { setBusy(false); }
   }
@@ -333,7 +334,7 @@ export default function App() {
   useEffect(()=>{
     if (window.ethereum) {
       const onAccounts=accounts=>{setWallet(accounts?.[0]||"");setOwner("")};
-      const onChain=()=>{setWallet("");setOwner("");setNotice("Network changed. Wallet dobara connect karo.")};
+      const onChain=()=>{setWallet("");setOwner("");setNotice("Network changed. Reconnect your wallet.")};
       window.ethereum.on?.("accountsChanged",onAccounts);
       window.ethereum.on?.("chainChanged",onChain);
       return ()=>{window.ethereum.removeListener?.("accountsChanged",onAccounts);window.ethereum.removeListener?.("chainChanged",onChain)};
@@ -348,7 +349,7 @@ export default function App() {
   const navItems=[["verify","Public verification"],["student","Student portal"],["admin","Admin portal"]];
   const openStudent=async()=>{setPage("student");if(wallet) await loadStudentCertificates(wallet)};
   const openAdmin=async()=>{setPage("admin");if(wallet) await checkAdmin(wallet)};
-  const copyShare=async(url)=>{try{await navigator.clipboard.writeText(url);setNotice("Share link copied.")}catch{setNotice("Browser clipboard permission nahi mili.")}};
+  const copyShare=async(url)=>{try{await navigator.clipboard.writeText(url);setNotice("Share link copied.")}catch{setNotice("Browser clipboard permission was not granted.")}};
 
   return <main className="app-shell">
     <nav className="topbar">
@@ -392,7 +393,7 @@ export default function App() {
     {page==="student" && <>
       <section className="hero portal-hero"><div className="eyebrow">STUDENT SPACE</div><h1>Your achievements.<br/><em>Always verifiable.</em></h1><p>Connect the wallet that received your certificates to see your credentials, download original files and share verification links.</p></section>
       <section className="workspace"><div className="panel">
-        <div className="panel-heading"><div><div className="eyebrow">MY CREDENTIALS</div><h2>My certificates</h2><p>Only certificates issued to the connected wallet are shown.</p></div><div className="panel-icon">▤</div></div>
+        <div className="panel-heading"><div><div className="eyebrow">MY CREDENTIALS</div><h2>My certificates</h2><p>Sign in with your email or connect the wallet that received your certificates.</p></div><div className="panel-icon">▤</div></div>
         <div className="student-login">
           <h3>Student email login</h3>
           {studentToken ? <div className="student-wallet"><span>Signed in as</span><strong>{studentAccountEmail}</strong><button className="button button-outline" onClick={()=>loadEmailCertificates()} disabled={busy}>Refresh certificates</button><button className="button button-outline" onClick={logoutStudent}>Sign out</button></div> : <form onSubmit={loginStudent}>
@@ -401,13 +402,13 @@ export default function App() {
             <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Signing in…":"Sign in to student portal"}</button>
           </form>}
           {studentToken && <div className="certificate-list">
-            {studentCertificates.map(cert=><article className="student-cert" key={cert.certificateId}>
+            {emailCertificates.map(cert=><article className="student-cert" key={cert.certificateId}>
               <div className="status-line"><span className={cert.revoked?"status status-revoked":"status status-valid"}>{cert.revoked?"REVOKED":"VERIFIED CREDENTIAL"}</span><span className="muted">{cert.issuedAt}</span></div>
               <h3>Certificate {short(cert.certificateId)}</h3><p>{cert.universityName || "University"} · ID: <strong>{short(cert.universityId)}</strong></p>
               <p>Issued by <strong>{short(cert.issuer)}</strong></p><p className="cert-hash">Document hash: {short(cert.documentHash)}</p>
               <div className="student-cert-actions"><a className="button button-primary" href={ipfsUrl(cert.ipfsCid)} target="_blank" rel="noreferrer">View / download</a><button className="button button-outline" onClick={()=>{setLookupId(cert.certificateId);setPage("verify");verify(cert.certificateId)}}>Verify</button></div>
             </article>)}
-            {!studentCertificates.length && <div className="empty-state">No certificates are linked to this email address yet.</div>}
+            {!emailCertificates.length && <div className="empty-state">No certificates are linked to this email address yet.</div>}
           </div>}
         </div>
         <div className="student-wallet-actions"><span>Or use your connected wallet</span><button className="button button-outline" onClick={connectWallet}>{wallet?short(wallet):"Connect student wallet"}</button></div>
