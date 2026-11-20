@@ -167,7 +167,7 @@ export default function App() {
       if (!file) throw new Error("Certificate PDF ya image select karo.");
       if (!certificateNumber.trim()) throw new Error("Unique certificate number enter karo.");
       const normalizedEmail=recipientEmail.trim().toLowerCase();
-      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(normalizedEmail)) throw new Error("Valid student email address required hai.");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new Error("Valid student email address required hai.");
       if (recipient.trim() && !isAddress(recipient.trim())) throw new Error("Student wallet address valid nahi hai. Is field ko blank bhi chhor sakte ho.");
       if (file.size>10*1024*1024) throw new Error("File maximum 10 MB honi chahiye.");
       const id=keccak256(toUtf8Bytes(`${universityId}:${certificateNumber.trim()}`));
@@ -179,7 +179,7 @@ export default function App() {
       const form=new FormData(); form.append("file",file);
       let uploadResponse;
       try {
-        uploadResponse=await fetch(`${API_URL.replace(/\\/$/,"")}/api/ipfs/upload`,{method:"POST",body:form});
+        uploadResponse=await fetch(`${API_URL.replace(/\/$/,"")}/api/ipfs/upload`,{method:"POST",body:form});
       } catch (networkError) {
         throw new Error(`Backend se connection nahi ho raha (${API_URL}). Backend deployment, CORS aur /api/health check karo. Details: ${networkError.message}`);
       }
@@ -196,7 +196,7 @@ export default function App() {
       verificationUrl.searchParams.set("cert",id);
       verificationUrl.searchParams.set("contract",contractAddress);
       try {
-        const emailResponse=await fetch(`${API_URL.replace(/\\/$/,"")}/api/email/certificate-issued`,{
+        const emailResponse=await fetch(`${API_URL.replace(/\/$/,"")}/api/email/certificate-issued`,{
           method:"POST",
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({
