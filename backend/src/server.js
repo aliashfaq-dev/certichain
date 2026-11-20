@@ -172,11 +172,13 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
+      if (temporaryPassword && student) await Student.deleteOne({ _id: student._id }).catch(() => {});
       console.error("Resend email failed:", { status: response.status, message: payload.message || payload.name });
       return res.status(502).json({ error: payload.message || "Email provider rejected the message." });
     }
     return res.status(200).json({ sent: true, id: payload.id, studentAccountCreated: Boolean(temporaryPassword) });
   } catch (error) {
+    if (temporaryPassword && student) await Student.deleteOne({ _id: student._id }).catch(() => {});
     console.error("Certificate email request failed:", error.message);
     return res.status(502).json({ error: "Could not connect to the email provider." });
   }
