@@ -397,7 +397,7 @@ export default function App() {
           <h3>Student email login</h3>
           {studentToken ? <div className="student-wallet"><span>Signed in as</span><strong>{studentAccountEmail}</strong><button className="button button-outline" onClick={()=>loadEmailCertificates()} disabled={busy}>Refresh certificates</button><button className="button button-outline" onClick={logoutStudent}>Sign out</button></div> : <form onSubmit={loginStudent}>
             <label htmlFor="student-email">Email address</label><input id="student-email" type="email" value={studentEmail} onChange={e=>setStudentEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" required/>
-            <label htmlFor="student-password">Password</label><input id="student-password" type="password" value={studentPassword} onChange={e=>setStudentPassword(e.target.value)} placeholder="Enter your temporary password" autoComplete="current-password" required/>
+            <label htmlFor="student-password">Password</label><input id="student-password" type="password" value={studentPassword} onChange={e=>setStudentPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" required/>
             <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Signing in…":"Sign in to student portal"}</button>
           </form>}
           {studentToken && <div className="certificate-list">
