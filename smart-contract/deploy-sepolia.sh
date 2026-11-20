@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${SEPOLIA_RPC_URL:?Set SEPOLIA_RPC_URL in your shell or .env}"
-: "${DEPLOYER_PRIVATE_KEY:?Set DEPLOYER_PRIVATE_KEY in your shell or .env}"
-: "${ETHERSCAN_API_KEY:?Set ETHERSCAN_API_KEY in your shell or .env}"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$ROOT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/.env"
+  set +a
+fi
 
-cd "$(dirname "$0")"
+: "${SEPOLIA_RPC_URL:?Add SEPOLIA_RPC_URL to smart-contract/.env}"
+: "${DEPLOYER_PRIVATE_KEY:?Add DEPLOYER_PRIVATE_KEY to smart-contract/.env}"
+: "${ETHERSCAN_API_KEY:?Add ETHERSCAN_API_KEY to smart-contract/.env}"
+
+cd "$ROOT"
 forge script script/Deploy.s.sol:Deploy \
   --rpc-url "$SEPOLIA_RPC_URL" \
   --private-key "$DEPLOYER_PRIVATE_KEY" \
