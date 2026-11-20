@@ -140,7 +140,7 @@ export default function App() {
   return <main className="app-shell">
     <nav className="topbar">
       <a className="brand" href="/">Certi<span>Chain</span><small>BLOCKCHAIN CREDENTIALS</small></a>
-      <div className="nav-actions"><span className="network"><i/> {CHAIN_ID===31337?"Anvil Local":CHAIN_ID===11155111?"Sepolia Testnet":`Chain ${CHAIN_ID}`}</span><button className="button button-outline" onClick={connectWallet}>{wallet?short(wallet):"Connect wallet"}</button></div>
+      <div className="nav-actions"><span className="network"><i/> {CHAIN_ID===31337?"Anvil Local":CHAIN_ID===11155111?"Sepolia Testnet":`Chain ${CHAIN_ID}`}</span>{CHAIN_ID===11155111 && isConfigured && <a className="button button-explorer" href={`https://sepolia.etherscan.io/address/${contractAddress}#code`} target="_blank" rel="noreferrer">View on Etherscan ↗</a>}<button className="button button-outline" onClick={connectWallet}>{wallet?short(wallet):"Connect wallet"}</button></div>
     </nav>
     <section className="hero">
       <div className="eyebrow"><span/> TRUST, WITHOUT THE PAPER TRAIL</div>
@@ -151,7 +151,7 @@ export default function App() {
     <section className="workspace">
       <div className="tabs"><button className={tab==="verify"?"active":""} onClick={()=>setTab("verify")}>Verify certificate</button><button className={tab==="issue"?"active":""} onClick={()=>setTab("issue")}>Issue certificate <span>ADMIN</span></button></div>
       {tab==="verify" ? <div className="panel">
-        <div className="panel-heading"><div><div className="eyebrow">PUBLIC VERIFICATION</div><h2>Check a credential</h2><p>No wallet connection required when a public RPC is configured.</p></div><div className="panel-icon">✓</div></div>
+        <div className="panel-heading"><div><div className="eyebrow">PUBLIC VERIFICATION</div><h2>Check a credential</h2><p>No wallet connection required when a public RPC is configured. {CHAIN_ID===31337?"Local Anvil contracts are not listed on Etherscan.":CHAIN_ID===11155111?"Sepolia contract explorer link is available in the header.":"Connect a supported public RPC to verify this contract."}</p></div><div className="panel-icon">✓</div></div>
         <label htmlFor="contract">Smart contract address</label><input id="contract" value={contractAddress} onChange={e=>setContractAddress(e.target.value)} placeholder="0x contract address"/>
         <label htmlFor="certificate">Certificate ID</label><div className="input-row"><input id="certificate" value={lookupId} onChange={e=>setLookupId(e.target.value)} placeholder="0x… 64 hexadecimal characters"/><button className="button button-primary" onClick={()=>verify()} disabled={busy}>{busy?"Checking…":"Verify"}</button></div>
         {result && <div className="result-card">
