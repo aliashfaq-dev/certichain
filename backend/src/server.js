@@ -7,11 +7,11 @@ import { rateLimit } from "express-rate-limit";
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
-const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:5173";
+const allowedOrigins = (process.env.FRONTEND_ORIGIN || "http://localhost:5173,https://certichain-lovat.vercel.app").split(",").map((value) => value.trim());
 
 app.disable("x-powered-by");
 app.use(helmet());
-app.use(cors({ origin: frontendOrigin.split(",").map((value) => value.trim()) }));
+app.use(cors({ origin(origin, callback) { if (!origin || allowedOrigins.includes(origin)) return callback(null, true); return callback(new Error("Origin is not allowed by CORS.")); } }));
 app.use(express.json({ limit: "1mb" }));
 
 const uploadLimiter = rateLimit({
@@ -100,4 +100,6 @@ app.use((error, _req, res, _next) => {
 
 app.use((req, res) => res.status(404).json({ error: "Route not found", path: req.path }));
 
-app.listen(port, () => console.log(`CertiChain API listening on http://localhost:${port}`));
+if (!process.env.VERCEL) app.listen(port, () => console.log(`CertiChain API listening on http://localhost:${port}`));
+
+export default app;
