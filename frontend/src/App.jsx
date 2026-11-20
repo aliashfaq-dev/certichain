@@ -44,6 +44,7 @@ export default function App() {
   const [theme,setTheme] = useState(() => localStorage.getItem("certichain-theme") || "light");
   const [certificateNumber,setCertificateNumber] = useState("");
   const [recipient,setRecipient] = useState("");
+  const [recipientEmail,setRecipientEmail] = useState("");
   const [file,setFile] = useState(null);
   const [lookupId,setLookupId] = useState(new URLSearchParams(window.location.search).get("cert") || "");
   const [result,setResult] = useState(null);
@@ -165,23 +166,58 @@ export default function App() {
       setUniversityProfile({universityId,name:university.name,active:university.active});
       if (!file) throw new Error("Certificate PDF ya image select karo.");
       if (!certificateNumber.trim()) throw new Error("Unique certificate number enter karo.");
-      if (!isAddress(recipient)) throw new Error("Valid student wallet address enter karo.");
+      const normalizedEmail=recipientEmail.trim().toLowerCase();
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(normalizedEmail)) throw new Error("Valid student email address required hai.");
+      if (recipient.trim() && !isAddress(recipient.trim())) throw new Error("Student wallet address valid nahi hai. Is field ko blank bhi chhor sakte ho.");
       if (file.size>10*1024*1024) throw new Error("File maximum 10 MB honi chahiye.");
       const id=keccak256(toUtf8Bytes(`${universityId}:${certificateNumber.trim()}`));
+      // If a student has no wallet, derive a non-reversible recipient reference from their email.
+      // The email itself is never written to the blockchain.
+      const recipientAddress=recipient.trim() || ("0x"+keccak256(toUtf8Bytes("certichain-email:"+normalizedEmail)).slice(-40));
       const documentHash=await hashFile(file);
       setNotice("Certificate IPFS par upload ho raha hai…");
       const form=new FormData(); form.append("file",file);
-      const uploadResponse=await fetch(`${API_URL}/api/ipfs/upload`,{method:"POST",body:form});
-      const uploadData=await uploadResponse.json();
-      if (!uploadResponse.ok) throw new Error(uploadData.error || "IPFS upload failed. Backend PINATA_JWT check karo.");
+      let uploadResponse;
+      try {
+        uploadResponse=await fetch(`${API_URL.replace(/\\/$/,"")}/api/ipfs/upload`,{method:"POST",body:form});
+      } catch (networkError) {
+        throw new Error(`Backend se connection nahi ho raha (${API_URL}). Backend deployment, CORS aur /api/health check karo. Details: ${networkError.message}`);
+      }
+      const uploadData=await uploadResponse.json().catch(()=>({}));
+      if (!uploadResponse.ok) throw new Error(uploadData.error || `IPFS upload failed (HTTP ${uploadResponse.status}). Backend PINATA_JWT check karo.`);
       setNotice("MetaMask mein issue transaction confirm karo…");
-      const tx=await contract.issueCertificate(universityId,id,recipient,documentHash,uploadData.cid);
+      const tx=await contract.issueCertificate(universityId,id,recipientAddress,documentHash,uploadData.cid);
       setNotice(`Transaction submitted: ${tx.hash}. Confirmation ka wait ho raha hai…`);
       await tx.wait();
-      setCertificateNumber(""); setRecipient(""); setFile(null);
+      setCertificateNumber(""); setRecipient(""); setRecipientEmail(""); setFile(null);
       setLookupId(id); setPage("verify");
       await verify(id);
-      setNotice("Certificate successfully issue ho gaya. Student ab Student Portal se dekh sakta hai.");
+      const verificationUrl=new URL(window.location.href);
+      verificationUrl.searchParams.set("cert",id);
+      verificationUrl.searchParams.set("contract",contractAddress);
+      try {
+        const emailResponse=await fetch(`${API_URL.replace(/\\/$/,"")}/api/email/certificate-issued`,{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            email:normalizedEmail,
+            universityName:university.name,
+            certificateNumber:certificateNumber.trim(),
+            certificateId:id,
+            verificationUrl:verificationUrl.toString(),
+            documentUrl:ipfsUrl(uploadData.cid),
+            transactionHash:tx.hash
+          })
+        });
+        const emailData=await emailResponse.json().catch(()=>({}));
+        if (!emailResponse.ok) {
+          setNotice(`Certificate blockchain par issue ho gaya, lekin email send nahi hui: ${emailData.error || "Email service configuration check karo."}`);
+        } else {
+          setNotice("Certificate successfully issue ho gaya! Student ko email notification aur verification link bhej diya gaya hai.");
+        }
+      } catch(emailError) {
+        setNotice(`Certificate blockchain par issue ho gaya, lekin email service se connection nahi hua: ${emailError.message}`);
+      }
     } catch(error) { setNotice(error.shortMessage || error.reason || error.message || "Issuance failed."); }
     finally { setBusy(false); }
   }
@@ -303,7 +339,7 @@ export default function App() {
           <div className="input-row"><input id="certificate" value={lookupId} onChange={e=>setLookupId(e.target.value)} placeholder="0x + 64 hexadecimal characters"/><button className="button button-primary" onClick={()=>verify()} disabled={busy}>{busy?"Checking…":"Verify certificate"}</button></div>
           {result && <div className="result-card">
             <div className="status-line"><span className={result.status==="VALID"?"status status-valid":"status status-revoked"}>{result.status==="VALID"?"✓ VALID CERTIFICATE":"✕ REVOKED CERTIFICATE"}</span><span className="muted">BLOCKCHAIN RECORD</span></div>
-            <div className="details-grid"><div><small>Certificate ID</small><strong>{short(result.certificateId)}</strong></div><div><small>University</small><strong>{result.universityName || short(result.universityId)}</strong></div><div><small>University ID</small><strong>{short(result.universityId)}</strong></div><div><small>Recipient wallet</small><strong>{short(result.recipient)}</strong></div><div><small>Issued by</small><strong>{short(result.issuer)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Document SHA-256</small><strong>{short(result.documentHash)}</strong></div><div><small>Revocation status</small><strong>{result.revoked?"Revoked":"Not revoked"}</strong></div></div>
+            <div className="details-grid"><div><small>Certificate ID</small><strong>{short(result.certificateId)}</strong></div><div><small>University</small><strong>{result.universityName || short(result.universityId)}</strong></div><div><small>University ID</small><strong>{short(result.universityId)}</strong></div><div><small>Recipient reference</small><strong>{short(result.recipient)}</strong></div><div><small>Issued by</small><strong>{short(result.issuer)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Document SHA-256</small><strong>{short(result.documentHash)}</strong></div><div><small>Revocation status</small><strong>{result.revoked?"Revoked":"Not revoked"}</strong></div></div>
             <div className="cid-row"><span>Issuer wallet</span><a href={`${EXPLORER}/address/${result.issuer}`} target="_blank" rel="noreferrer">{result.issuer} ↗</a></div>
             <div className="cid-row"><span>IPFS certificate file</span><a href={ipfsUrl(result.ipfsCid)} target="_blank" rel="noreferrer">View / download document ↗</a></div>
             <div className="cid-row"><span>Blockchain record</span><a href={`${EXPLORER}/address/${contractAddress}`} target="_blank" rel="noreferrer">View contract ↗</a></div>
@@ -358,7 +394,9 @@ export default function App() {
           <form onSubmit={issue}>
             <label htmlFor="contract-admin">Smart contract address</label><input id="contract-admin" value={contractAddress} onChange={e=>setContractAddress(e.target.value)} placeholder="0x contract address"/>
             <label htmlFor="cert-number">Certificate number (unique within your university)</label><input id="cert-number" value={certificateNumber} onChange={e=>setCertificateNumber(e.target.value)} placeholder="e.g. 2026-CS-0001" required/>
-            <label htmlFor="recipient">Student wallet address</label><input id="recipient" value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="0x student wallet…" required/>
+            <label htmlFor="recipient-email">Student email address <span className="required-mark">REQUIRED</span></label><input id="recipient-email" type="email" value={recipientEmail} onChange={e=>setRecipientEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" required/>
+            <label htmlFor="recipient">Student wallet address <span className="optional-mark">OPTIONAL</span></label><input id="recipient" value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="0x student wallet (optional)"/>
+            <p className="file-note">Student ke paas wallet nahi hai? Is field ko blank chhor do. Email se private recipient reference generate hoga; email blockchain par store nahi hogi.</p>
             <label htmlFor="document">Certificate document (PDF, PNG or JPG · max 10 MB)</label><input id="document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={e=>setFile(e.target.files?.[0]||null)} required/>
             {file && <p className="file-note">Selected: {file.name} · {(file.size/1024/1024).toFixed(2)} MB</p>}
             <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Processing…":"Upload & issue certificate"}</button>
