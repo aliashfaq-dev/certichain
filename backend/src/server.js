@@ -134,7 +134,7 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
     }
   } catch (error) {
     console.error("Student account persistence failed:", error.message);
-    return res.status(503).json({ error: error.message.includes("MONGODB_URI") ? error.message : "Student account service is temporarily unavailable." });
+    return res.status(503).json({ error: (error.message.includes("MONGO_URI") || error.message.includes("MONGODB_URI")) ? error.message : "Student account service is temporarily unavailable." });
   }
 
   const safeUniversity = escapeHtml(universityName);
