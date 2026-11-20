@@ -141,8 +141,7 @@ export default function App() {
         cert=await contract.getCertificate(certificateId);
       } catch {
         setNotice("Searching blockchain records…");
-        const latest=await readProvider.getBlockNumber(); const events=[]; for(let toBlock=latest;toBlock>=0;toBlock-=10000){const fromBlock=Math.max(0,toBlock-9999);events.push(...await contract.queryFilter(contract.filters.CertificateIssued(),fromBlock,toBlock));}
-        const match=events.find(event=>String(event.args.documentHash).toLowerCase()===certificateId.toLowerCase());
+        const latest=await readProvider.getBlockNumber(); let match=null; for(let toBlock=latest;toBlock>=0;toBlock-=10000){const fromBlock=Math.max(0,toBlock-9999);const events=await contract.queryFilter(contract.filters.CertificateIssued(),fromBlock,toBlock);match=events.find(event=>String(event.args.documentHash).toLowerCase()===certificateId.toLowerCase());if(match) break;}
         if (!match) throw new Error("No certificate was found for this hash. Check the certificate ID or document hash.");
         certificateId=match.args.certificateId;
         cert=await contract.getCertificate(certificateId);
