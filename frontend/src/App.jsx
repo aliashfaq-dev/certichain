@@ -142,7 +142,8 @@ export default function App() {
         cert=await contract.getCertificate(certificateId);
       }
       const valid=await contract.verifyCertificate(certificateId);
-      const data={certificateId,universityId:cert.universityId,status:valid?"VALID":"REVOKED",recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
+      const university=await contract.getUniversity(cert.issuer);
+      const data={certificateId,universityId:cert.universityId,universityName:university.name,status:valid?"VALID":"REVOKED",recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
       setResult(data);
       const url=new URL(window.location.href); url.searchParams.set("cert",certificateId); url.searchParams.set("contract",contractAddress);
       setShareUrl(url.toString());
@@ -194,7 +195,8 @@ export default function App() {
       const records=await Promise.all(events.map(async event=>{
         const id=event.args.certificateId;
         const cert=await contract.getCertificate(id);
-        return {certificateId:id,universityId:cert.universityId,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
+        const university=await contract.getUniversity(cert.issuer);
+        return {certificateId:id,universityId:cert.universityId,universityName:university.name,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
       }));
       setStudentCertificates(records.reverse());
       if (!records.length) setNotice("Is wallet address ke liye abhi koi certificate nahi mila.");
@@ -301,7 +303,7 @@ export default function App() {
           <div className="input-row"><input id="certificate" value={lookupId} onChange={e=>setLookupId(e.target.value)} placeholder="0x + 64 hexadecimal characters"/><button className="button button-primary" onClick={()=>verify()} disabled={busy}>{busy?"Checking…":"Verify certificate"}</button></div>
           {result && <div className="result-card">
             <div className="status-line"><span className={result.status==="VALID"?"status status-valid":"status status-revoked"}>{result.status==="VALID"?"✓ VALID CERTIFICATE":"✕ REVOKED CERTIFICATE"}</span><span className="muted">BLOCKCHAIN RECORD</span></div>
-            <div className="details-grid"><div><small>Certificate ID</small><strong>{short(result.certificateId)}</strong></div><div><small>University ID</small><strong>{short(result.universityId)}</strong></div><div><small>Recipient wallet</small><strong>{short(result.recipient)}</strong></div><div><small>Issued by</small><strong>{short(result.issuer)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Document SHA-256</small><strong>{short(result.documentHash)}</strong></div><div><small>Revocation status</small><strong>{result.revoked?"Revoked":"Not revoked"}</strong></div></div>
+            <div className="details-grid"><div><small>Certificate ID</small><strong>{short(result.certificateId)}</strong></div><div><small>University</small><strong>{result.universityName || short(result.universityId)}</strong></div><div><small>University ID</small><strong>{short(result.universityId)}</strong></div><div><small>Recipient wallet</small><strong>{short(result.recipient)}</strong></div><div><small>Issued by</small><strong>{short(result.issuer)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Document SHA-256</small><strong>{short(result.documentHash)}</strong></div><div><small>Revocation status</small><strong>{result.revoked?"Revoked":"Not revoked"}</strong></div></div>
             <div className="cid-row"><span>Issuer wallet</span><a href={`${EXPLORER}/address/${result.issuer}`} target="_blank" rel="noreferrer">{result.issuer} ↗</a></div>
             <div className="cid-row"><span>IPFS certificate file</span><a href={ipfsUrl(result.ipfsCid)} target="_blank" rel="noreferrer">View / download document ↗</a></div>
             <div className="cid-row"><span>Blockchain record</span><a href={`${EXPLORER}/address/${contractAddress}`} target="_blank" rel="noreferrer">View contract ↗</a></div>
@@ -321,7 +323,7 @@ export default function App() {
           {studentCertificates.map(cert=><article className="student-cert" key={cert.certificateId}>
             <div className="status-line"><span className={cert.revoked?"status status-revoked":"status status-valid"}>{cert.revoked?"REVOKED":"VERIFIED CREDENTIAL"}</span><span className="muted">{cert.issuedAt}</span></div>
             <h3>Certificate {short(cert.certificateId)}</h3>
-            <p>University ID: <strong>{short(cert.universityId)}</strong></p>
+            <p>{cert.universityName || "University"} · ID: <strong>{short(cert.universityId)}</strong></p>
             <p>Issued by <strong>{short(cert.issuer)}</strong></p>
             <p className="cert-hash">Document hash: {short(cert.documentHash)}</p>
             <div className="student-cert-actions"><a className="button button-primary" href={ipfsUrl(cert.ipfsCid)} target="_blank" rel="noreferrer">View / download</a><button className="button button-outline" onClick={()=>{const url=new URL(window.location.href);url.searchParams.set("cert",cert.certificateId);url.searchParams.set("contract",contractAddress);copyShare(url.toString())}}>Share certificate</button><button className="button button-outline" onClick={()=>{setLookupId(cert.certificateId);setPage("verify");verify(cert.certificateId)}}>Verify</button></div>
@@ -332,7 +334,7 @@ export default function App() {
     </>}
 
     {page==="admin" && <>
-      <section className="hero portal-hero"><div className="eyebrow">INSTITUTION CONTROL CENTER</div><h1>Admin portal.<br/><em>Issue with authority.</em></h1><p>Certificate issuance is restricted to the wallet that owns the deployed smart contract. Every issue and revoke action is confirmed on-chain.</p></section>
+      <section className="hero portal-hero"><div className="eyebrow">INSTITUTION CONTROL CENTER</div><h1>Admin portal.<br/><em>Issue with authority.</em></h1><p>The platform owner authorizes universities. Each institution issues and revokes its own credentials, with every transaction recorded on-chain.</p></section>
       <section className="workspace"><div className="panel">
         <div className="panel-heading"><div><div className="eyebrow">INSTITUTION CONTROL CENTER</div><h2>University & issuer management</h2><p>Platform owner authorizes institutions. Each authorized university wallet pays its own issuance gas fees.</p></div><div className="panel-icon">⌑</div></div>
         {!wallet ? <button className="button button-primary" onClick={connectWallet}>Connect university / platform wallet</button> : owner.toLowerCase()===wallet.toLowerCase() ? <>
