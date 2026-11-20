@@ -141,7 +141,7 @@ export default function App() {
         cert=await contract.getCertificate(certificateId);
       } catch {
         setNotice("Searching blockchain records…");
-        const latest=await readProvider.getBlockNumber(); const events=[]; for(let fromBlock=0;fromBlock<=latest;fromBlock+=2000){events.push(...await contract.queryFilter(contract.filters.CertificateIssued(),fromBlock,Math.min(fromBlock+1999,latest)));}
+        const latest=await readProvider.getBlockNumber(); const events=[]; for(let toBlock=latest;toBlock>=0;toBlock-=10000){const fromBlock=Math.max(0,toBlock-9999);events.push(...await contract.queryFilter(contract.filters.CertificateIssued(),fromBlock,toBlock));}
         const match=events.find(event=>String(event.args.documentHash).toLowerCase()===certificateId.toLowerCase());
         if (!match) throw new Error("No certificate was found for this hash. Check the certificate ID or document hash.");
         certificateId=match.args.certificateId;
@@ -412,7 +412,7 @@ export default function App() {
           </div>}
         </div>
         <div className="student-wallet-actions"><span>Or use your connected wallet</span><button className="button button-outline" onClick={connectWallet}>{wallet?short(wallet):"Connect student wallet"}</button></div>
-        {!wallet ? <button className="button button-primary" onClick={connectWallet}>Connect student wallet</button> : <><div className="student-wallet"><span>Connected wallet</span><strong>{wallet}</strong><button className="button button-outline" onClick={()=>loadStudentCertificates(wallet)} disabled={busy}>{busy?"Loading…":"Refresh certificates"}</button></div>
+        {!wallet ? null : <><div className="student-wallet"><span>Connected wallet</span><strong>{wallet}</strong><button className="button button-outline" onClick={()=>loadStudentCertificates(wallet)} disabled={busy}>{busy?"Loading…":"Refresh certificates"}</button></div>
         <div className="certificate-list">
           {studentCertificates.map(cert=><article className="student-cert" key={cert.certificateId}>
             <div className="status-line"><span className={cert.revoked?"status status-revoked":"status status-valid"}>{cert.revoked?"REVOKED":"VERIFIED CREDENTIAL"}</span><span className="muted">{cert.issuedAt}</span></div>
