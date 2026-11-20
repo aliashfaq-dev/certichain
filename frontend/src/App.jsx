@@ -171,9 +171,11 @@ export default function App() {
       if (recipient.trim() && !isAddress(recipient.trim())) throw new Error("Student wallet address valid nahi hai. Is field ko blank bhi chhor sakte ho.");
       if (file.size>10*1024*1024) throw new Error("File maximum 10 MB honi chahiye.");
       const id=keccak256(toUtf8Bytes(`${universityId}:${certificateNumber.trim()}`));
-      // If a student has no wallet, derive a non-reversible recipient reference from their email.
-      // The email itself is never written to the blockchain.
-      const recipientAddress=recipient.trim() || ("0x"+keccak256(toUtf8Bytes("certichain-email:"+normalizedEmail)).slice(-40));
+      // If a student has no wallet, create a random opaque on-chain recipient reference.
+      // Do not derive it from the email: the email itself and any reversible identifier stay off-chain.
+      const randomRecipientBytes=crypto.getRandomValues(new Uint8Array(20));
+      const generatedRecipient="0x"+Array.from(randomRecipientBytes,byte=>byte.toString(16).padStart(2,"0")).join("");
+      const recipientAddress=recipient.trim() || generatedRecipient;
       const documentHash=await hashFile(file);
       setNotice("Certificate IPFS par upload ho raha hai…");
       const form=new FormData(); form.append("file",file);
