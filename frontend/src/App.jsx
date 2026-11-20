@@ -4,11 +4,16 @@ import QRCode from "qrcode";
 
 const ABI = [
   "function owner() view returns (address)",
+  "function getUniversity(address wallet) view returns (tuple(bytes32 universityId,string name,bool active))",
+  "function registerUniversity(address wallet,bytes32 universityId,string name)",
+  "function setUniversityStatus(address wallet,bool active)",
   "function verifyCertificate(bytes32 certificateId) view returns (bool)",
-  "function getCertificate(bytes32 certificateId) view returns (tuple(address recipient,address issuer,bytes32 documentHash,string ipfsCid,uint256 issuedAt,bool revoked))",
-  "function issueCertificate(bytes32 certificateId,address recipient,bytes32 documentHash,string ipfsCid)",
+  "function getCertificate(bytes32 certificateId) view returns (tuple(bytes32 universityId,address recipient,address issuer,bytes32 documentHash,string ipfsCid,uint256 issuedAt,bool revoked))",
+  "function issueCertificate(bytes32 universityId,bytes32 certificateId,address recipient,bytes32 documentHash,string ipfsCid)",
   "function revokeCertificate(bytes32 certificateId)",
-  "event CertificateIssued(bytes32 indexed certificateId,address indexed recipient,address indexed issuer,bytes32 documentHash,string ipfsCid,uint256 issuedAt)",
+  "event UniversityRegistered(address indexed wallet,bytes32 indexed universityId,string name)",
+  "event UniversityStatusChanged(address indexed wallet,bool active)",
+  "event CertificateIssued(bytes32 indexed universityId,bytes32 indexed certificateId,address indexed recipient,address issuer,bytes32 documentHash,string ipfsCid,uint256 issuedAt)",
   "event CertificateRevoked(bytes32 indexed certificateId,address indexed issuer,uint256 revokedAt)"
 ];
 const RPC_URL = import.meta.env.VITE_RPC_URL || "";
@@ -28,6 +33,12 @@ async function hashFile(file) {
 export default function App() {
   const [wallet,setWallet] = useState("");
   const [owner,setOwner] = useState("");
+  const [universityProfile,setUniversityProfile] = useState(null);
+  const [universityWalletInput,setUniversityWalletInput] = useState("");
+  const [universityCodeInput,setUniversityCodeInput] = useState("");
+  const [universityNameInput,setUniversityNameInput] = useState("");
+  const [statusWalletInput,setStatusWalletInput] = useState("");
+  const [statusActive,setStatusActive] = useState(false);
   const [contractAddress,setContractAddress] = useState(new URLSearchParams(window.location.search).get("contract") || CONTRACT_ADDRESS);
   const [page,setPage] = useState("verify");
   const [theme,setTheme] = useState(() => localStorage.getItem("certichain-theme") || "light");
@@ -94,8 +105,15 @@ export default function App() {
       const contract=getReadContract();
       const contractOwner=await contract.owner();
       setOwner(contractOwner);
-      if (contractOwner.toLowerCase() !== account.toLowerCase()) {
-        setNotice("Access denied: connected wallet smart contract admin/owner nahi hai.");
+      if (contractOwner.toLowerCase() === account.toLowerCase()) {
+        setUniversityProfile(null);
+        return true;
+      }
+      const university=await contract.getUniversity(account);
+      const profile={universityId:university.universityId,name:university.name,active:university.active};
+      setUniversityProfile(profile);
+      if (!profile.active) {
+        setNotice("Access denied: ye university wallet registered nahi hai ya deactivate hai.");
         return false;
       }
       return true;
@@ -124,7 +142,7 @@ export default function App() {
         cert=await contract.getCertificate(certificateId);
       }
       const valid=await contract.verifyCertificate(certificateId);
-      const data={certificateId,status:valid?"VALID":"REVOKED",recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
+      const data={certificateId,universityId:cert.universityId,status:valid?"VALID":"REVOKED",recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
       setResult(data);
       const url=new URL(window.location.href); url.searchParams.set("cert",certificateId); url.searchParams.set("contract",contractAddress);
       setShareUrl(url.toString());
@@ -140,14 +158,15 @@ export default function App() {
     try {
       const {signer,account}=await getWalletSigner();
       const contract=new Contract(contractAddress,ABI,signer);
-      const contractOwner=await contract.owner();
-      setOwner(contractOwner);
-      if (contractOwner.toLowerCase()!==account.toLowerCase()) throw new Error("Access denied: sirf contract owner/admin certificate issue kar sakta hai.");
+      const university=await contract.getUniversity(account);
+      if (!university.active) throw new Error("Is wallet ko platform owner ne university issuer ke taur par authorize nahi kiya.");
+      const universityId=university.universityId;
+      setUniversityProfile({universityId,name:university.name,active:university.active});
       if (!file) throw new Error("Certificate PDF ya image select karo.");
       if (!certificateNumber.trim()) throw new Error("Unique certificate number enter karo.");
       if (!isAddress(recipient)) throw new Error("Valid student wallet address enter karo.");
       if (file.size>10*1024*1024) throw new Error("File maximum 10 MB honi chahiye.");
-      const id=keccak256(toUtf8Bytes(certificateNumber.trim()));
+      const id=keccak256(toUtf8Bytes(`${universityId}:${certificateNumber.trim()}`));
       const documentHash=await hashFile(file);
       setNotice("Certificate IPFS par upload ho raha hai…");
       const form=new FormData(); form.append("file",file);
@@ -155,7 +174,7 @@ export default function App() {
       const uploadData=await uploadResponse.json();
       if (!uploadResponse.ok) throw new Error(uploadData.error || "IPFS upload failed. Backend PINATA_JWT check karo.");
       setNotice("MetaMask mein issue transaction confirm karo…");
-      const tx=await contract.issueCertificate(id,recipient,documentHash,uploadData.cid);
+      const tx=await contract.issueCertificate(universityId,id,recipient,documentHash,uploadData.cid);
       setNotice(`Transaction submitted: ${tx.hash}. Confirmation ka wait ho raha hai…`);
       await tx.wait();
       setCertificateNumber(""); setRecipient(""); setFile(null);
@@ -171,15 +190,50 @@ export default function App() {
     setBusy(true); setNotice("");
     try {
       const contract=getReadContract();
-      const events=await contract.queryFilter(contract.filters.CertificateIssued(null,account),0,"latest");
+      const events=await contract.queryFilter(contract.filters.CertificateIssued(null,null,account),0,"latest");
       const records=await Promise.all(events.map(async event=>{
         const id=event.args.certificateId;
         const cert=await contract.getCertificate(id);
-        return {certificateId:id,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
+        return {certificateId:id,universityId:cert.universityId,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
       }));
       setStudentCertificates(records.reverse());
       if (!records.length) setNotice("Is wallet address ke liye abhi koi certificate nahi mila.");
     } catch(error) { setNotice(error.shortMessage || error.message || "Certificates load nahi ho sake. RPC limits check karo."); }
+    finally { setBusy(false); }
+  }
+
+  async function registerUniversity(event) {
+    event.preventDefault(); setBusy(true); setNotice("");
+    try {
+      const {signer}=await getWalletSigner();
+      const contract=new Contract(contractAddress,ABI,signer);
+      const contractOwner=await contract.owner();
+      if (contractOwner.toLowerCase()!==wallet.toLowerCase()) throw new Error("Sirf platform owner university register kar sakta hai.");
+      if (!isAddress(universityWalletInput)) throw new Error("Valid university wallet address enter karo.");
+      if (!universityCodeInput.trim() || !universityNameInput.trim()) throw new Error("University code aur name dono required hain.");
+      const universityId=keccak256(toUtf8Bytes(universityCodeInput.trim().toUpperCase()));
+      const tx=await contract.registerUniversity(universityWalletInput,universityId,universityNameInput.trim());
+      setNotice(`University registration submitted: ${tx.hash}. Confirmation ka wait…`);
+      await tx.wait();
+      setUniversityWalletInput(""); setUniversityCodeInput(""); setUniversityNameInput("");
+      setNotice("University successfully authorize ho gayi. Ab university apne wallet se certificates issue kar sakti hai.");
+    } catch(error) { setNotice(error.shortMessage || error.reason || error.message || "University registration failed."); }
+    finally { setBusy(false); }
+  }
+
+  async function changeUniversityStatus(event) {
+    event.preventDefault(); setBusy(true); setNotice("");
+    try {
+      const {signer}=await getWalletSigner();
+      const contract=new Contract(contractAddress,ABI,signer);
+      if ((await contract.owner()).toLowerCase()!==wallet.toLowerCase()) throw new Error("Sirf platform owner university status change kar sakta hai.");
+      if (!isAddress(statusWalletInput)) throw new Error("Valid university wallet address enter karo.");
+      const tx=await contract.setUniversityStatus(statusWalletInput,statusActive);
+      setNotice(`University status transaction submitted: ${tx.hash}`);
+      await tx.wait();
+      setNotice(statusActive?"University reactivated successfully.":"University deactivated successfully.");
+      setStatusWalletInput("");
+    } catch(error) { setNotice(error.shortMessage || error.reason || error.message || "University status update failed."); }
     finally { setBusy(false); }
   }
 
@@ -247,7 +301,7 @@ export default function App() {
           <div className="input-row"><input id="certificate" value={lookupId} onChange={e=>setLookupId(e.target.value)} placeholder="0x + 64 hexadecimal characters"/><button className="button button-primary" onClick={()=>verify()} disabled={busy}>{busy?"Checking…":"Verify certificate"}</button></div>
           {result && <div className="result-card">
             <div className="status-line"><span className={result.status==="VALID"?"status status-valid":"status status-revoked"}>{result.status==="VALID"?"✓ VALID CERTIFICATE":"✕ REVOKED CERTIFICATE"}</span><span className="muted">BLOCKCHAIN RECORD</span></div>
-            <div className="details-grid"><div><small>Certificate ID</small><strong>{short(result.certificateId)}</strong></div><div><small>Recipient wallet</small><strong>{short(result.recipient)}</strong></div><div><small>Issued by</small><strong>{short(result.issuer)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Document SHA-256</small><strong>{short(result.documentHash)}</strong></div><div><small>Revocation status</small><strong>{result.revoked?"Revoked":"Not revoked"}</strong></div></div>
+            <div className="details-grid"><div><small>Certificate ID</small><strong>{short(result.certificateId)}</strong></div><div><small>University ID</small><strong>{short(result.universityId)}</strong></div><div><small>Recipient wallet</small><strong>{short(result.recipient)}</strong></div><div><small>Issued by</small><strong>{short(result.issuer)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Document SHA-256</small><strong>{short(result.documentHash)}</strong></div><div><small>Revocation status</small><strong>{result.revoked?"Revoked":"Not revoked"}</strong></div></div>
             <div className="cid-row"><span>Issuer wallet</span><a href={`${EXPLORER}/address/${result.issuer}`} target="_blank" rel="noreferrer">{result.issuer} ↗</a></div>
             <div className="cid-row"><span>IPFS certificate file</span><a href={ipfsUrl(result.ipfsCid)} target="_blank" rel="noreferrer">View / download document ↗</a></div>
             <div className="cid-row"><span>Blockchain record</span><a href={`${EXPLORER}/address/${contractAddress}`} target="_blank" rel="noreferrer">View contract ↗</a></div>
@@ -267,6 +321,7 @@ export default function App() {
           {studentCertificates.map(cert=><article className="student-cert" key={cert.certificateId}>
             <div className="status-line"><span className={cert.revoked?"status status-revoked":"status status-valid"}>{cert.revoked?"REVOKED":"VERIFIED CREDENTIAL"}</span><span className="muted">{cert.issuedAt}</span></div>
             <h3>Certificate {short(cert.certificateId)}</h3>
+            <p>University ID: <strong>{short(cert.universityId)}</strong></p>
             <p>Issued by <strong>{short(cert.issuer)}</strong></p>
             <p className="cert-hash">Document hash: {short(cert.documentHash)}</p>
             <div className="student-cert-actions"><a className="button button-primary" href={ipfsUrl(cert.ipfsCid)} target="_blank" rel="noreferrer">View / download</a><button className="button button-outline" onClick={()=>{const url=new URL(window.location.href);url.searchParams.set("cert",cert.certificateId);url.searchParams.set("contract",contractAddress);copyShare(url.toString())}}>Share certificate</button><button className="button button-outline" onClick={()=>{setLookupId(cert.certificateId);setPage("verify");verify(cert.certificateId)}}>Verify</button></div>
@@ -279,19 +334,35 @@ export default function App() {
     {page==="admin" && <>
       <section className="hero portal-hero"><div className="eyebrow">INSTITUTION CONTROL CENTER</div><h1>Admin portal.<br/><em>Issue with authority.</em></h1><p>Certificate issuance is restricted to the wallet that owns the deployed smart contract. Every issue and revoke action is confirmed on-chain.</p></section>
       <section className="workspace"><div className="panel">
-        <div className="panel-heading"><div><div className="eyebrow">ADMIN AUTHORIZATION</div><h2>Protected issuance</h2><p>Connect the contract owner wallet to unlock certificate management.</p></div><div className="panel-icon">⌑</div></div>
-        {!wallet ? <button className="button button-primary" onClick={connectWallet}>Connect admin wallet</button> : owner.toLowerCase()!==wallet.toLowerCase() ? <div className="access-denied"><strong>Access restricted</strong><p>This wallet is not the owner of the configured smart contract. Only the contract owner can issue credentials.</p><button className="button button-outline" onClick={()=>checkAdmin(wallet)}>Check admin access</button></div> : <>
-          <div className="admin-authorized"><span>ADMIN ACCESS VERIFIED</span><strong>{short(wallet)}</strong></div>
+        <div className="panel-heading"><div><div className="eyebrow">INSTITUTION CONTROL CENTER</div><h2>University & issuer management</h2><p>Platform owner authorizes institutions. Each authorized university wallet pays its own issuance gas fees.</p></div><div className="panel-icon">⌑</div></div>
+        {!wallet ? <button className="button button-primary" onClick={connectWallet}>Connect university / platform wallet</button> : owner.toLowerCase()===wallet.toLowerCase() ? <>
+          <div className="admin-authorized"><span>PLATFORM OWNER ACCESS</span><strong>{short(wallet)}</strong></div>
+          <form onSubmit={registerUniversity}>
+            <h3>Authorize a university</h3>
+            <label htmlFor="university-name">University name</label><input id="university-name" value={universityNameInput} onChange={e=>setUniversityNameInput(e.target.value)} placeholder="e.g. Example University" required/>
+            <label htmlFor="university-code">Unique university code</label><input id="university-code" value={universityCodeInput} onChange={e=>setUniversityCodeInput(e.target.value)} placeholder="e.g. EXU" required/>
+            <label htmlFor="university-wallet">University issuer wallet</label><input id="university-wallet" value={universityWalletInput} onChange={e=>setUniversityWalletInput(e.target.value)} placeholder="0x university wallet…" required/>
+            <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Processing…":"Authorize university"}</button>
+          </form>
+          <form onSubmit={changeUniversityStatus}>
+            <h3>Activate / deactivate university</h3>
+            <label htmlFor="status-wallet">Registered university wallet</label><input id="status-wallet" value={statusWalletInput} onChange={e=>setStatusWalletInput(e.target.value)} placeholder="0x university wallet…" required/>
+            <label htmlFor="status-active">New status</label><select id="status-active" value={statusActive?"true":"false"} onChange={e=>setStatusActive(e.target.value==="true")}><option value="false">Deactivate</option><option value="true">Reactivate</option></select>
+            <button className="button button-outline button-wide" type="submit" disabled={busy}>Update university status</button>
+          </form>
+          <div className="admin-security-note">Only the platform owner can authorize or deactivate university wallets. This wallet does not issue university certificates unless separately registered as an issuer.</div>
+        </> : universityProfile?.active ? <>
+          <div className="admin-authorized"><span>UNIVERSITY ISSUER AUTHORIZED</span><strong>{universityProfile.name} · {short(universityProfile.universityId)}</strong><small>{short(wallet)}</small></div>
           <form onSubmit={issue}>
             <label htmlFor="contract-admin">Smart contract address</label><input id="contract-admin" value={contractAddress} onChange={e=>setContractAddress(e.target.value)} placeholder="0x contract address"/>
-            <label htmlFor="cert-number">Certificate number / unique ID</label><input id="cert-number" value={certificateNumber} onChange={e=>setCertificateNumber(e.target.value)} placeholder="e.g. UNI-2026-0001" required/>
+            <label htmlFor="cert-number">Certificate number (unique within your university)</label><input id="cert-number" value={certificateNumber} onChange={e=>setCertificateNumber(e.target.value)} placeholder="e.g. 2026-CS-0001" required/>
             <label htmlFor="recipient">Student wallet address</label><input id="recipient" value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="0x student wallet…" required/>
             <label htmlFor="document">Certificate document (PDF, PNG or JPG · max 10 MB)</label><input id="document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={e=>setFile(e.target.files?.[0]||null)} required/>
             {file && <p className="file-note">Selected: {file.name} · {(file.size/1024/1024).toFixed(2)} MB</p>}
             <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Processing…":"Upload & issue certificate"}</button>
           </form>
-          <div className="admin-security-note">Authorization is enforced by the smart contract's onlyOwner modifier. UI protection is not the security boundary.</div>
-        </>}
+          <div className="admin-security-note">Your university wallet pays the gas fee for each issue/revoke transaction. Certificate IDs are namespaced by your unique university ID.</div>
+        </> : <div className="access-denied"><strong>Access restricted</strong><p>This wallet is not an active registered university issuer or the platform owner.</p><button className="button button-outline" onClick={()=>checkAdmin(wallet)}>Check authorization again</button></div>}
       </div></section>
     </>}
 
