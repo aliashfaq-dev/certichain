@@ -51,6 +51,10 @@ export default function App() {
   const [qr,setQr] = useState("");
   const [shareUrl,setShareUrl] = useState("");
   const [studentCertificates,setStudentCertificates] = useState([]);
+  const [studentEmail,setStudentEmail] = useState("");
+  const [studentPassword,setStudentPassword] = useState("");
+  const [studentToken,setStudentToken] = useState(() => sessionStorage.getItem("certichain-student-token") || "");
+  const [studentAccountEmail,setStudentAccountEmail] = useState(() => sessionStorage.getItem("certichain-student-email") || "");
   const [busy,setBusy] = useState(false);
   const [notice,setNotice] = useState("");
   const readProvider = useMemo(() => RPC_URL ? new JsonRpcProvider(RPC_URL) : null, []);
@@ -222,6 +226,39 @@ export default function App() {
       }
     } catch(error) { setNotice(error.shortMessage || error.reason || error.message || "Issuance failed."); }
     finally { setBusy(false); }
+  }
+
+  async function loadEmailCertificates(token=studentToken) {
+    if (!token) return;
+    const response=await fetch(API_URL+"/api/student/certificates",{headers:{Authorization:"Bearer "+token}});
+    const payload=await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error(payload.error || "Could not load student certificates.");
+    const contract=getReadContract();
+    const records=await Promise.all((payload.certificates||[]).map(async item=>{
+      const cert=await contract.getCertificate(item.certificateId);
+      const university=await contract.getUniversity(cert.issuer);
+      return {certificateId:item.certificateId,universityId:cert.universityId,universityName:university.name||item.universityName,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
+    }));
+    setStudentCertificates(records.reverse());
+  }
+
+  async function loginStudent(event) {
+    event.preventDefault(); setBusy(true); setNotice("");
+    try {
+      const response=await fetch(API_URL+"/api/student/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:studentEmail.trim().toLowerCase(),password:studentPassword})});
+      const payload=await response.json().catch(()=>({}));
+      if (!response.ok) throw new Error(payload.error || "Student login failed.");
+      sessionStorage.setItem("certichain-student-token",payload.token);
+      sessionStorage.setItem("certichain-student-email",payload.email);
+      setStudentToken(payload.token); setStudentAccountEmail(payload.email); setStudentPassword("");
+      await loadEmailCertificates(payload.token); setNotice("Signed in successfully. Your certificates are ready.");
+    } catch(error) { setNotice(error.message || "Student login failed."); }
+    finally { setBusy(false); }
+  }
+
+  function logoutStudent() {
+    sessionStorage.removeItem("certichain-student-token"); sessionStorage.removeItem("certichain-student-email");
+    setStudentToken(""); setStudentAccountEmail(""); setStudentCertificates([]); setNotice("You have been signed out.");
   }
 
   async function loadStudentCertificates(account=wallet) {
