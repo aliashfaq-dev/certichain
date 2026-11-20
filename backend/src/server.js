@@ -39,23 +39,54 @@ app.post("/api/ipfs/upload", uploadLimiter, upload.single("file"), async (req, r
   if (!req.file) return res.status(400).json({ error: "Choose a PDF, PNG or JPG file." });
 
   try {
+    // Pinata's scoped API keys use the V3 Files upload endpoint.
     const form = new FormData();
     form.append("file", new Blob([req.file.buffer], { type: req.file.mimetype }), req.file.originalname);
-    form.append("pinataMetadata", JSON.stringify({ name: `CertiChain-${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}` }));
-    const response = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+    form.append("network", "public");
+    form.append("name", `CertiChain-${Date.now()}-${req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_")}`);
+
+    const response = await fetch("https://uploads.pinata.cloud/v3/files", {
       method: "POST",
       headers: { Authorization: `Bearer ${process.env.PINATA_JWT}` },
       body: form
     });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) return res.status(502).json({ error: payload.error?.details || payload.error || "IPFS upload failed." });
-    res.status(201).json({
-      cid: payload.IpfsHash,
-      url: `https://gateway.pinata.cloud/ipfs/${payload.IpfsHash}`,
-      size: payload.PinSize
+
+    const responseText = await response.text();
+    let payload = {};
+    try {
+      payload = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      payload = { message: responseText };
+    }
+
+    if (!response.ok) {
+      // Log the provider response for local debugging, but never log the JWT.
+      console.error("Pinata V3 upload failed:", {
+        status: response.status,
+        statusText: response.statusText,
+        response: payload
+      });
+      return res.status(502).json({
+        error: payload.error || payload.message || payload.detail || "Pinata upload failed.",
+        providerStatus: response.status
+      });
+    }
+
+    const fileData = payload.data || payload;
+    const cid = fileData.cid;
+    if (!cid) {
+      console.error("Pinata V3 upload returned no CID:", payload);
+      return res.status(502).json({ error: "Pinata upload response did not include a file CID." });
+    }
+
+    return res.status(201).json({
+      cid,
+      url: `https://gateway.pinata.cloud/ipfs/${cid}`,
+      size: fileData.size ?? req.file.size
     });
   } catch (error) {
-    res.status(500).json({ error: error.message || "IPFS upload failed." });
+    console.error("IPFS upload request failed:", error);
+    return res.status(500).json({ error: "IPFS upload failed. Check the backend terminal for details." });
   }
 });
 
@@ -63,6 +94,7 @@ app.use((error, _req, res, _next) => {
   if (error instanceof multer.MulterError) {
     return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({ error: error.code === "LIMIT_FILE_SIZE" ? "Maximum file size is 10 MB." : error.message });
   }
+  console.error("API request error:", error);
   res.status(400).json({ error: error.message || "Invalid request." });
 });
 
