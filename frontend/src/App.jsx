@@ -393,6 +393,24 @@ export default function App() {
       <section className="hero portal-hero"><div className="eyebrow">STUDENT SPACE</div><h1>Your achievements.<br/><em>Always verifiable.</em></h1><p>Connect the wallet that received your certificates to see your credentials, download original files and share verification links.</p></section>
       <section className="workspace"><div className="panel">
         <div className="panel-heading"><div><div className="eyebrow">MY CREDENTIALS</div><h2>My certificates</h2><p>Only certificates issued to the connected wallet are shown.</p></div><div className="panel-icon">▤</div></div>
+        <div className="student-login">
+          <h3>Student email login</h3>
+          {studentToken ? <div className="student-wallet"><span>Signed in as</span><strong>{studentAccountEmail}</strong><button className="button button-outline" onClick={()=>loadEmailCertificates()} disabled={busy}>Refresh certificates</button><button className="button button-outline" onClick={logoutStudent}>Sign out</button></div> : <form onSubmit={loginStudent}>
+            <label htmlFor="student-email">Email address</label><input id="student-email" type="email" value={studentEmail} onChange={e=>setStudentEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" required/>
+            <label htmlFor="student-password">Password</label><input id="student-password" type="password" value={studentPassword} onChange={e=>setStudentPassword(e.target.value)} placeholder="Enter your temporary password" autoComplete="current-password" required/>
+            <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Signing in…":"Sign in to student portal"}</button>
+          </form>}
+          {studentToken && <div className="certificate-list">
+            {studentCertificates.map(cert=><article className="student-cert" key={cert.certificateId}>
+              <div className="status-line"><span className={cert.revoked?"status status-revoked":"status status-valid"}>{cert.revoked?"REVOKED":"VERIFIED CREDENTIAL"}</span><span className="muted">{cert.issuedAt}</span></div>
+              <h3>Certificate {short(cert.certificateId)}</h3><p>{cert.universityName || "University"} · ID: <strong>{short(cert.universityId)}</strong></p>
+              <p>Issued by <strong>{short(cert.issuer)}</strong></p><p className="cert-hash">Document hash: {short(cert.documentHash)}</p>
+              <div className="student-cert-actions"><a className="button button-primary" href={ipfsUrl(cert.ipfsCid)} target="_blank" rel="noreferrer">View / download</a><button className="button button-outline" onClick={()=>{setLookupId(cert.certificateId);setPage("verify");verify(cert.certificateId)}}>Verify</button></div>
+            </article>)}
+            {!studentCertificates.length && <div className="empty-state">No certificates are linked to this email address yet.</div>}
+          </div>}
+        </div>
+        <div className="student-wallet-actions"><span>Or use your connected wallet</span><button className="button button-outline" onClick={connectWallet}>{wallet?short(wallet):"Connect student wallet"}</button></div>
         {!wallet ? <button className="button button-primary" onClick={connectWallet}>Connect student wallet</button> : <><div className="student-wallet"><span>Connected wallet</span><strong>{wallet}</strong><button className="button button-outline" onClick={()=>loadStudentCertificates(wallet)} disabled={busy}>{busy?"Loading…":"Refresh certificates"}</button></div>
         <div className="certificate-list">
           {studentCertificates.map(cert=><article className="student-cert" key={cert.certificateId}>
