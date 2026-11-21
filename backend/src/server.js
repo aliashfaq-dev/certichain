@@ -330,9 +330,7 @@ app.post("/api/university/next-number", sequenceLimiter, async (req, res) => {
 });
 
 
-app.post("/api/admin/university-account", universityAuthLimiter, async(req,res)=>{
- const wallet=String(req.body?.wallet||"").toLowerCase(),email=String(req.body?.email||"").trim().toLowerCase(),password=String(req.body?.password||""),universityName=String(req.body?.universityName||"").trim(),universityCode=String(req.body?.universityCode||"").trim().toUpperCase(),signature=String(req.body?.signature||"");
- if(!/^0x[a-f0-9]{40}$/.test(wallet)||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<10||!universityName||!/^[A-Z0-9-]{2,16}$/.test(universityCode)||!signature)return res.status(400).json({error:"Provide a valid university wallet, official email, name, code and password (10+ characters)."});
+
  try{
   await connectMongo();
   const rpc=process.env.RPC_URL||process.env.SEPOLIA_RPC_URL||"https://ethereum-sepolia-rpc.publicnode.com";
@@ -356,6 +354,9 @@ app.post("/api/admin/university-account", universityAuthLimiter, async(req,res)=
 });
 
 const universityAuthLimiter = rateLimit({ windowMs: 15*60*1000, limit: 10, standardHeaders: "draft-8", legacyHeaders: false });
+app.post("/api/admin/university-account", universityAuthLimiter, async(req,res)=>{
+ const wallet=String(req.body?.wallet||"").toLowerCase(),email=String(req.body?.email||"").trim().toLowerCase(),password=String(req.body?.password||""),universityName=String(req.body?.universityName||"").trim(),universityCode=String(req.body?.universityCode||"").trim().toUpperCase(),signature=String(req.body?.signature||"");
+ if(!/^0x[a-f0-9]{40}$/.test(wallet)||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<10||!universityName||!/^[A-Z0-9-]{2,16}$/.test(universityCode)||!signature)return res.status(400).json({error:"Provide a valid university wallet, official email, name, code and password (10+ characters)."});
 app.post("/api/university/auth/login",universityAuthLimiter,async(req,res)=>{
  const email=String(req.body?.email||"").trim().toLowerCase(),password=String(req.body?.password||"");
  try {await connectMongo();const account=await UniversityAccount.findOne({email});if(!account||!(await bcrypt.compare(password,account.passwordHash)))return res.status(401).json({error:"Incorrect email or password."});if(!account.verified)return res.status(403).json({error:"Verify your university email before signing in."});return res.json({token:createUniversityToken(account),email:account.email,university:{name:account.universityName,code:account.universityCode,wallet:account.wallet}});}
