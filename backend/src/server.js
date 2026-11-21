@@ -20,7 +20,7 @@ async function sendEmail({ to, subject, text, html, attachments = [] }) {
   return transporter.sendMail({ from: SMTP_FROM, to, subject, text, html, attachments });
 }
 
-async function buildCertificatePdf({ documentUrl, documentMimeType, verificationUrl, certificateNumber, universityName }) {
+async function buildCertificatePdf({ documentUrl, documentMimeType, verificationUrl, certificateNumber, universityName, qrAlreadyEmbedded = false }) {
   let pdf;
   if (typeof documentUrl === "string" && documentUrl.startsWith("https://gateway.pinata.cloud/ipfs/")) {
     const response = await fetch(documentUrl);
@@ -45,12 +45,14 @@ async function buildCertificatePdf({ documentUrl, documentMimeType, verification
     page.drawText("Certificate number: " + String(certificateNumber || "—"), { x: 48, y: 690, size: 11, font });
   }
   if (!pdf.getPageCount()) pdf.addPage([595.28, 841.89]);
-  const qrBytes = await QRCode.toBuffer(verificationUrl, { type: "png", width: 220, margin: 1 });
-  const qrImage = await pdf.embedPng(qrBytes);
-  const firstPage = pdf.getPages()[0];
-  const qrSize = 76;
-  firstPage.drawRectangle({ x: firstPage.getWidth()-qrSize-20, y: 18, width: qrSize+12, height: qrSize+24, color: rgb(1,1,1), borderColor: rgb(0.86,0.88,0.92), borderWidth: 0.7 });
-  firstPage.drawImage(qrImage, { x: firstPage.getWidth()-qrSize-14, y: 36, width: qrSize, height: qrSize });
+  if (!qrAlreadyEmbedded) {
+    const qrBytes = await QRCode.toBuffer(verificationUrl, { type: "png", width: 220, margin: 1 });
+    const qrImage = await pdf.embedPng(qrBytes);
+    const firstPage = pdf.getPages()[0];
+    const qrSize = 76;
+    firstPage.drawRectangle({ x: firstPage.getWidth()-qrSize-20, y: 18, width: qrSize+12, height: qrSize+24, color: rgb(1,1,1), borderColor: rgb(0.86,0.88,0.92), borderWidth: 0.7 });
+    firstPage.drawImage(qrImage, { x: firstPage.getWidth()-qrSize-14, y: 36, width: qrSize, height: qrSize });
+  }
   return Buffer.from(await pdf.save());
 }
 
@@ -203,7 +205,7 @@ const emailLimiter = rateLimit({
 
 
 app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
-  const { email, universityName, certificateNumber, certificateId, verificationUrl, documentUrl, documentMimeType, transactionHash, universityWallet, recipientWallet } = req.body || {};
+  const { email, universityName, certificateNumber, certificateId, verificationUrl, documentUrl, documentMimeType, transactionHash, universityWallet, recipientWallet, qrAlreadyEmbedded } = req.body || {};
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return res.status(400).json({ error: "A valid student email address is required." });
   if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.SMTP_FROM) return res.status(503).json({ error: "Email service is not configured. Add Gmail SMTP environment variables." });
@@ -260,7 +262,7 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
     ? `Student portal email: ${normalizedEmail}\nTemporary password: ${temporaryPassword}\nKeep this password private.`
     : "Your student portal account already exists. Use your existing password to sign in.";
   try {
-    const pdfBytes = await buildCertificatePdf({ documentUrl, documentMimeType, verificationUrl, certificateNumber, universityName });
+    const pdfBytes = await buildCertificatePdf({ documentUrl, documentMimeType, verificationUrl, certificateNumber, universityName, qrAlreadyEmbedded:Boolean(qrAlreadyEmbedded) });
     const info = await sendEmail({
       to: normalizedEmail,
       subject: `Your certificate from ${universityName}`,
