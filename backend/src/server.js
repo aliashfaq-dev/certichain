@@ -331,6 +331,7 @@ app.post("/api/university/auth/challenge", universityAuthLimiter, async (req,res
 app.post("/api/university/auth/register", universityAuthLimiter, async (req,res)=>{
  const email=String(req.body?.email||"").trim().toLowerCase(), password=String(req.body?.password||""), universityName=String(req.body?.universityName||"").trim(), universityCode=String(req.body?.universityCode||"").trim().toUpperCase(), wallet=String(req.body?.wallet||"").toLowerCase(), signature=String(req.body?.signature||""), nonce=String(req.body?.nonce||"");
  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<10||!universityName||!/^[A-Z0-9-]{2,16}$/.test(universityCode)||!/^0x[a-f0-9]{40}$/.test(wallet)||!signature||!nonce) return res.status(400).json({error:"Complete all fields, use a valid university email and a password of at least 10 characters."});
+ let pendingAccountId=null;
  try {
   await connectMongo();
   const challenge=await UniversityNonce.findOne({wallet});
@@ -340,11 +341,11 @@ app.post("/api/university/auth/register", universityAuthLimiter, async (req,res)
   if(verifyMessage(message,signature).toLowerCase()!==wallet) return res.status(401).json({error:"Wallet signature does not match the university wallet."});
   if(await UniversityAccount.findOne({$or:[{email},{wallet}]})) return res.status(409).json({error:"An account already exists for this email or wallet."});
   const token=crypto.randomBytes(32).toString("hex"), account=new UniversityAccount({email,passwordHash:await bcrypt.hash(password,12),universityName,universityCode,wallet,emailVerificationHash:crypto.createHash("sha256").update(token).digest("hex"),emailVerificationExpires:new Date(Date.now()+30*60*1000)});
-  await account.save(); await UniversityNonce.deleteOne({_id:challenge._id});
+  await account.save(); pendingAccountId=account._id; await UniversityNonce.deleteOne({_id:challenge._id});
   const link=(process.env.FRONTEND_ORIGIN||"https://certichain-ali-4be7.vercel.app").split(",")[0].trim()+"/?university_verify="+token;
   await sendEmail({to:email,subject:"Verify your CertiChain university account",text:"Verify your official university email within 30 minutes: "+link,html:`<div style="font-family:Arial"><h2>Verify university email</h2><p>Complete your CertiChain university registration:</p><a href="${link}">Verify email address</a><p>This link expires in 30 minutes.</p></div>`});
   return res.status(201).json({registered:true,email,verificationEmailSent:true});
- } catch(error) { console.error("University registration failed:",error.message); return res.status(503).json({error:"Could not complete university registration. Check email service and try again."}); }
+ } catch(error) { if(pendingAccountId) await UniversityAccount.deleteOne({_id:pendingAccountId,verified:false}).catch(()=>{}); console.error("University registration failed:",error.message); return res.status(503).json({error:"Could not complete university registration. Check email service and try again."}); }
 });
 app.post("/api/university/auth/verify-email", universityAuthLimiter, async(req,res)=>{
  const token=String(req.body?.token||""); if(!token) return res.status(400).json({error:"Verification token is required."});
