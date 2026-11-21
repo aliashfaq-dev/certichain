@@ -13,20 +13,20 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import QRCode from "qrcode";
 
 const app = express();
-async function sendEmail({ to, subject, text, html }) {
+async function sendEmail({ to, subject, text, html, attachments = [] }) {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) throw new Error("SMTP is not configured. Add SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and SMTP_FROM.");
   const transporter = nodemailer.createTransport({ host: SMTP_HOST, port: Number(SMTP_PORT), secure: String(process.env.SMTP_SECURE || "true").toLowerCase() === "true", auth: { user: SMTP_USER, pass: SMTP_PASS } });
-  return transporter.sendMail({ from: SMTP_FROM, to, subject, text, html, attachments: arguments[0].attachments || [] });
+  return transporter.sendMail({ from: SMTP_FROM, to, subject, text, html, attachments });
 }
 
-async function buildCertificatePdf({ documentUrl, verificationUrl, certificateNumber, universityName }) {
+async function buildCertificatePdf({ documentUrl, documentMimeType, verificationUrl, certificateNumber, universityName }) {
   let pdf;
   if (typeof documentUrl === "string" && documentUrl.startsWith("https://gateway.pinata.cloud/ipfs/")) {
     const response = await fetch(documentUrl);
     if (!response.ok) throw new Error("Could not retrieve the original certificate file for the email PDF.");
     const bytes = new Uint8Array(await response.arrayBuffer());
-    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    const contentType = (documentMimeType || response.headers.get("content-type") || "").toLowerCase();
     if (contentType.includes("application/pdf") || documentUrl.toLowerCase().endsWith(".pdf")) {
       pdf = await PDFDocument.load(bytes);
     } else {
@@ -154,7 +154,7 @@ const emailLimiter = rateLimit({
 
 
 app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
-  const { email, universityName, certificateNumber, certificateId, verificationUrl, documentUrl, transactionHash, universityWallet, recipientWallet } = req.body || {};
+  const { email, universityName, certificateNumber, certificateId, verificationUrl, documentUrl, documentMimeType, transactionHash, universityWallet, recipientWallet } = req.body || {};
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return res.status(400).json({ error: "A valid student email address is required." });
   if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.SMTP_FROM) return res.status(503).json({ error: "Email service is not configured. Add Gmail SMTP environment variables." });
@@ -211,7 +211,7 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
     ? `Student portal email: ${normalizedEmail}\\nTemporary password: ${temporaryPassword}\\nKeep this password private.`
     : "Your student portal account already exists. Use your existing password to sign in.";
   try {
-    const pdfBytes = await buildCertificatePdf({ documentUrl, verificationUrl, certificateNumber, universityName });
+    const pdfBytes = await buildCertificatePdf({ documentUrl, documentMimeType, verificationUrl, certificateNumber, universityName });
     const info = await sendEmail({
       to: normalizedEmail,
       subject: `Your certificate from ${universityName}`,
