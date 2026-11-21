@@ -424,7 +424,7 @@ export default function App() {
           <div className="input-row"><input id="certificate" value={lookupId} onChange={e=>setLookupId(e.target.value)} placeholder="0x + 64 hexadecimal characters"/><button className="button button-primary" onClick={()=>verify()} disabled={busy}>{busy?"Checking…":"Verify certificate"}</button></div>
           {result && <div className="result-card">
             <div className="status-line"><span className={result.status==="VALID"?"status status-valid":"status status-revoked"}>{result.status==="VALID"?"✓ VALID CERTIFICATE":"✕ REVOKED CERTIFICATE"}</span><span className="muted">BLOCKCHAIN RECORD</span></div>
-            <div className="details-grid"><div><small>Certificate ID</small><strong>{short(result.certificateId)}</strong></div><div><small>University</small><strong>{result.universityName || short(result.universityId)}</strong></div><div><small>University ID</small><strong>{short(result.universityId)}</strong></div><div><small>Recipient reference</small><strong>{short(result.recipient)}</strong></div><div><small>Issued by</small><strong>{short(result.issuer)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Document SHA-256</small><strong>{short(result.documentHash)}</strong></div><div><small>Revocation status</small><strong>{result.revoked?"Revoked":"Not revoked"}</strong></div></div>
+            <div className="details-grid"><div><small>Certificate ID</small><strong>{short(result.certificateId)}</strong></div><div><small>University</small><strong>{result.universityName || short(result.universityId)}</strong></div><div><small>University ID</small><strong>{short(result.universityId)}</strong></div><div><small>Recipient reference</small><strong>{short(result.recipient)}</strong></div><div><small>Issued by</small><strong>{short(result.issuer)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Revocation status</small><strong>{result.revoked?"Revoked":"Not revoked"}</strong></div></div>
             
             <div className="cid-row"><span>IPFS certificate file</span><a href={ipfsUrl(result.ipfsCid)} target="_blank" rel="noreferrer">View / download document ↗</a></div>
             
@@ -451,7 +451,7 @@ export default function App() {
             {emailCertificates.map(cert=><article className="student-cert" key={cert.certificateId}>
               <div className="status-line"><span className={cert.revoked?"status status-revoked":"status status-valid"}>{cert.revoked?"REVOKED":"VERIFIED CREDENTIAL"}</span><span className="muted">{cert.issuedAt}</span></div>
               <h3>Certificate {short(cert.certificateId)}</h3><p>{cert.universityName || "University"} · ID: <strong>{short(cert.universityId)}</strong></p>
-              <p>Issued by <strong>{short(cert.issuer)}</strong></p><p className="cert-hash">Document hash: {short(cert.documentHash)}</p>
+              
               <div className="student-cert-actions"><a className="button button-primary" href={ipfsUrl(cert.ipfsCid)} target="_blank" rel="noreferrer">View / download</a><button className="button button-outline" onClick={()=>{setLookupId(cert.certificateId);setPage("verify");verify(cert.certificateId)}}>Verify</button></div>
             </article>)}
             {!emailCertificates.length && <div className="empty-state">No certificates are linked to this email address yet.</div>}
