@@ -394,6 +394,26 @@ app.get("/api/student/certificates", requireStudent, async (req, res) => {
   res.json({ email: req.student.email, certificates: req.student.certificates });
 });
 
+app.post("/api/university/render-certificate", uploadLimiter, requireUniversity, upload.single("file"), async (req,res)=>{
+  if(!req.file)return res.status(400).json({error:"Choose the saved certificate template first."});
+  const studentName=String(req.body?.studentName||"").trim(),degreeName=String(req.body?.degreeName||"").trim(),issueDate=String(req.body?.issueDate||"").trim(),verificationUrl=String(req.body?.verificationUrl||"").trim();
+  if(!studentName||!degreeName||!issueDate||!verificationUrl.startsWith("https://"))return res.status(400).json({error:"Student name, degree, issue date and verification link are required."});
+  try{
+    let pdf;
+    if(req.file.mimetype==="application/pdf")pdf=await PDFDocument.load(req.file.buffer);
+    else {pdf=await PDFDocument.create();const page=pdf.addPage([842,595]);const image=req.file.mimetype==="image/png"?await pdf.embedPng(req.file.buffer):await pdf.embedJpg(req.file.buffer);const scale=Math.min(page.getWidth()/image.width,page.getHeight()/image.height);page.drawImage(image,{x:(page.getWidth()-image.width*scale)/2,y:(page.getHeight()-image.height*scale)/2,width:image.width*scale,height:image.height*scale});}
+    const font=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold),page=pdf.getPages()[0],w=page.getWidth(),h=page.getHeight();
+    const fit=(value,size,max)=>{let n=size;while(n>12&&bold.widthOfTextAtSize(value,n)>max)n-=1;return n;};
+    const center=(value,size,fontFace,y)=>page.drawText(value,{x:(w-fontFace.widthOfTextAtSize(value,size))/2,y,size,font:fontFace,color:rgb(.12,.15,.22)});
+    center(studentName,fit(studentName,30,w*.72),bold,h*.54);
+    center(degreeName,fit(degreeName,20,w*.72),font,h*.44);
+    page.drawText(new Date(issueDate).toLocaleDateString("en-GB"),{x:w*.075,y:h*.105,size:11,font,color:rgb(.2,.23,.3)});
+    const qr=await QRCode.toBuffer(verificationUrl,{type:"png",width:300,margin:1}),qrImage=await pdf.embedPng(qr),qrSize=Math.min(w,h)*.16;
+    page.drawImage(qrImage,{x:w-qrSize-w*.055,y:h*.055,width:qrSize,height:qrSize});
+    res.setHeader("Content-Type","application/pdf");res.setHeader("Content-Disposition",'attachment; filename="certichain-certificate.pdf"');return res.send(Buffer.from(await pdf.save()));
+  }catch(error){console.error("Certificate template rendering failed:",error.message);return res.status(422).json({error:"Could not render this template. Ensure it is a valid PDF, PNG or JPG."});}
+});
+
 app.post("/api/ipfs/upload", uploadLimiter, upload.single("file"), async (req, res) => {
   if (!process.env.PINATA_JWT) return res.status(503).json({ error: "IPFS is not configured. Add PINATA_JWT to backend/.env." });
   if (!req.file) return res.status(400).json({ error: "Choose a PDF, PNG or JPG file." });
