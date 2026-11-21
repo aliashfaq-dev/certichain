@@ -91,6 +91,12 @@ const UniversityCertificate = mongoose.models.UniversityCertificate || mongoose.
   issuedAt: { type: Date, default: Date.now }
 }, { timestamps: true }));
 
+
+const UniversitySequence = mongoose.models.UniversitySequence || mongoose.model("UniversitySequence", new mongoose.Schema({
+  universityWallet: { type: String, required: true, unique: true, lowercase: true },
+  lastValue: { type: Number, required: true, default: 0 }
+}, { timestamps: true }));
+
 function createStudentToken(student) {
   if (!process.env.JWT_SECRET) throw new Error("Student authentication is not configured. Add JWT_SECRET to the backend environment.");
   return jwt.sign({ sub: String(student._id), email: student.email, role: "student" }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -256,6 +262,27 @@ app.post("/api/student/login", studentAuthLimiter, async (req, res) => {
   } catch (error) {
     console.error("Student login failed:", error.message);
     return res.status(503).json({ error: "Student login is temporarily unavailable. Please try again." });
+  }
+});
+
+
+const sequenceLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 120, standardHeaders: "draft-8", legacyHeaders: false });
+app.post("/api/university/next-number", sequenceLimiter, async (req, res) => {
+  const wallet = typeof req.body?.wallet === "string" ? req.body.wallet.trim().toLowerCase() : "";
+  const universityName = typeof req.body?.universityName === "string" ? req.body.universityName.trim() : "";
+  const universityId = typeof req.body?.universityId === "string" ? req.body.universityId.trim() : "";
+  if (!/^0x[a-f0-9]{40}$/.test(wallet) || !universityName || !universityId) return res.status(400).json({ error: "A valid university wallet, name and ID are required." });
+  try {
+    await connectMongo();
+    const existing = await UniversityCertificate.find({ universityWallet: wallet }).select("certificateNumber").lean();
+    const prefix = universityName.normalize("NFKD").replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase() || universityId.replace(/^0x/i, "").slice(0, 4).toUpperCase();
+    const legacyMax = existing.reduce((max, item) => { const match = String(item.certificateNumber || "").match(/-(\\d+)$/); return match ? Math.max(max, Number(match[1])) : max; }, 0);
+    await UniversitySequence.updateOne({ universityWallet: wallet }, { $max: { lastValue: legacyMax }, $setOnInsert: { universityWallet: wallet } }, { upsert: true });
+    const sequence = await UniversitySequence.findOneAndUpdate({ universityWallet: wallet }, { $inc: { lastValue: 1 } }, { new: true });
+    return res.json({ certificateNumber: `${prefix}-${String(sequence.lastValue).padStart(5, "0")}`, sequence: sequence.lastValue });
+  } catch (error) {
+    console.error("Certificate sequence reservation failed:", error.message);
+    return res.status(503).json({ error: "Could not reserve the next certificate number. Please retry." });
   }
 });
 
