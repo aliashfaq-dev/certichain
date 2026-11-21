@@ -97,6 +97,40 @@ const UniversitySequence = mongoose.models.UniversitySequence || mongoose.model(
   lastValue: { type: Number, required: true, default: 0 }
 }, { timestamps: true }));
 
+
+const UniversityAccount = mongoose.models.UniversityAccount || mongoose.model("UniversityAccount", new mongoose.Schema({
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  passwordHash: { type: String, required: true },
+  universityName: { type: String, required: true, trim: true },
+  universityCode: { type: String, required: true, uppercase: true, trim: true },
+  wallet: { type: String, required: true, unique: true, lowercase: true },
+  verified: { type: Boolean, default: false },
+  emailVerificationHash: { type: String, default: "" },
+  emailVerificationExpires: { type: Date, default: null },
+  certificateTemplates: [{ name: String, cid: String, url: String, mimeType: String, fieldMap: mongoose.Schema.Types.Mixed, active: { type: Boolean, default: false }, createdAt: { type: Date, default: Date.now } }]
+}, { timestamps: true }));
+const UniversityNonce = mongoose.models.UniversityNonce || mongoose.model("UniversityNonce", new mongoose.Schema({
+  wallet: { type: String, required: true, unique: true, lowercase: true },
+  nonce: { type: String, required: true },
+  expiresAt: { type: Date, required: true, expires: 0 }
+}));
+function createUniversityToken(account) {
+  if (!process.env.JWT_SECRET) throw new Error("University authentication is not configured.");
+  return jwt.sign({ sub: String(account._id), email: account.email, role: "university", wallet: account.wallet }, process.env.JWT_SECRET, { expiresIn: "12h" });
+}
+async function requireUniversity(req,res,next) {
+  try {
+    const token=(req.headers.authorization||"").replace(/^Bearer /,"");
+    if(!token || !process.env.JWT_SECRET) return res.status(401).json({error:"Sign in to your university account."});
+    const payload=jwt.verify(token,process.env.JWT_SECRET);
+    if(payload.role!=="university") return res.status(403).json({error:"University account required."});
+    await connectMongo();
+    const account=await UniversityAccount.findById(payload.sub);
+    if(!account || !account.verified) return res.status(401).json({error:"University account is unavailable or unverified."});
+    req.university=account; next();
+  } catch { return res.status(401).json({error:"University session expired. Sign in again."}); }
+}
+
 function createStudentToken(student) {
   if (!process.env.JWT_SECRET) throw new Error("Student authentication is not configured. Add JWT_SECRET to the backend environment.");
   return jwt.sign({ sub: String(student._id), email: student.email, role: "student" }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -284,6 +318,65 @@ app.post("/api/university/next-number", sequenceLimiter, async (req, res) => {
     console.error("Certificate sequence reservation failed:", error.message);
     return res.status(503).json({ error: "Could not reserve the next certificate number. Please retry." });
   }
+});
+
+
+const universityAuthLimiter = rateLimit({ windowMs: 15*60*1000, limit: 10, standardHeaders: "draft-8", legacyHeaders: false });
+app.post("/api/university/auth/challenge", universityAuthLimiter, async (req,res)=>{
+ const wallet=String(req.body?.wallet||"").toLowerCase();
+ if(!/^0x[a-f0-9]{40}$/.test(wallet)) return res.status(400).json({error:"Enter a valid university wallet."});
+ try { await connectMongo(); const nonce=crypto.randomBytes(24).toString("hex"); await UniversityNonce.findOneAndUpdate({wallet},{nonce,expiresAt:new Date(Date.now()+5*60*1000)},{upsert:true,new:true}); return res.json({nonce,expiresIn:300}); }
+ catch { return res.status(503).json({error:"Could not create wallet verification challenge."}); }
+});
+app.post("/api/university/auth/register", universityAuthLimiter, async (req,res)=>{
+ const email=String(req.body?.email||"").trim().toLowerCase(), password=String(req.body?.password||""), universityName=String(req.body?.universityName||"").trim(), universityCode=String(req.body?.universityCode||"").trim().toUpperCase(), wallet=String(req.body?.wallet||"").toLowerCase(), signature=String(req.body?.signature||""), nonce=String(req.body?.nonce||"");
+ if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||password.length<10||!universityName||!/^[A-Z0-9-]{2,16}$/.test(universityCode)||!/^0x[a-f0-9]{40}$/.test(wallet)||!signature||!nonce) return res.status(400).json({error:"Complete all fields, use a valid university email and a password of at least 10 characters."});
+ try {
+  await connectMongo();
+  const challenge=await UniversityNonce.findOne({wallet});
+  if(!challenge||challenge.nonce!==nonce||challenge.expiresAt<Date.now()) return res.status(400).json({error:"Wallet verification expired. Request a new challenge."});
+  const {verifyMessage}=await import("ethers");
+  const message="CertiChain University Account Registration\\nWallet: "+wallet+"\\nEmail: "+email+"\\nNonce: "+nonce;
+  if(verifyMessage(message,signature).toLowerCase()!==wallet) return res.status(401).json({error:"Wallet signature does not match the university wallet."});
+  if(await UniversityAccount.findOne({$or:[{email},{wallet}]})) return res.status(409).json({error:"An account already exists for this email or wallet."});
+  const token=crypto.randomBytes(32).toString("hex"), account=new UniversityAccount({email,passwordHash:await bcrypt.hash(password,12),universityName,universityCode,wallet,emailVerificationHash:crypto.createHash("sha256").update(token).digest("hex"),emailVerificationExpires:new Date(Date.now()+30*60*1000)});
+  await account.save(); await UniversityNonce.deleteOne({_id:challenge._id});
+  const link=(process.env.FRONTEND_ORIGIN||"https://certichain-ali-4be7.vercel.app").split(",")[0].trim()+"/?university_verify="+token;
+  await sendEmail({to:email,subject:"Verify your CertiChain university account",text:"Verify your official university email within 30 minutes: "+link,html:`<div style="font-family:Arial"><h2>Verify university email</h2><p>Complete your CertiChain university registration:</p><a href="${link}">Verify email address</a><p>This link expires in 30 minutes.</p></div>`});
+  return res.status(201).json({registered:true,email,verificationEmailSent:true});
+ } catch(error) { console.error("University registration failed:",error.message); return res.status(503).json({error:"Could not complete university registration. Check email service and try again."}); }
+});
+app.post("/api/university/auth/verify-email", universityAuthLimiter, async(req,res)=>{
+ const token=String(req.body?.token||""); if(!token) return res.status(400).json({error:"Verification token is required."});
+ try { await connectMongo(); const hash=crypto.createHash("sha256").update(token).digest("hex"); const account=await UniversityAccount.findOne({emailVerificationHash:hash,emailVerificationExpires:{$gt:new Date()}}); if(!account)return res.status(400).json({error:"Verification link is invalid or expired."}); account.verified=true;account.emailVerificationHash="";account.emailVerificationExpires=null;await account.save();return res.json({verified:true,message:"University email verified. You can now sign in."});}
+ catch{return res.status(503).json({error:"Email verification is temporarily unavailable."});}
+});
+app.post("/api/university/auth/login",universityAuthLimiter,async(req,res)=>{
+ const email=String(req.body?.email||"").trim().toLowerCase(),password=String(req.body?.password||"");
+ try {await connectMongo();const account=await UniversityAccount.findOne({email});if(!account||!(await bcrypt.compare(password,account.passwordHash)))return res.status(401).json({error:"Incorrect email or password."});if(!account.verified)return res.status(403).json({error:"Verify your university email before signing in."});return res.json({token:createUniversityToken(account),email:account.email,university:{name:account.universityName,code:account.universityCode,wallet:account.wallet}});}
+ catch{return res.status(503).json({error:"University login is temporarily unavailable."});}
+});
+app.get("/api/university/account",requireUniversity,(req,res)=>res.json({email:req.university.email,university:{name:req.university.universityName,code:req.university.universityCode,wallet:req.university.wallet,templates:req.university.certificateTemplates}}));
+app.patch("/api/university/account",requireUniversity,async(req,res)=>{
+ const name=String(req.body?.universityName||"").trim(),code=String(req.body?.universityCode||"").trim().toUpperCase();
+ if(!name||!/^[A-Z0-9-]{2,16}$/.test(code))return res.status(400).json({error:"Enter a valid university name and code."});
+ try {const collision=await UniversityAccount.findOne({universityCode:code,_id:{$ne:req.university._id}});if(collision)return res.status(409).json({error:"That university code is already in use."});req.university.universityName=name;req.university.universityCode=code;await req.university.save();return res.json({updated:true,university:{name,code,wallet:req.university.wallet}});}
+ catch{return res.status(503).json({error:"Could not update university profile."});}
+});
+app.post("/api/university/templates",requireUniversity,async(req,res)=>{
+ const name=String(req.body?.name||"").trim(),cid=String(req.body?.cid||"").trim(),mimeType=String(req.body?.mimeType||"").trim();
+ if(!name||!/^[a-zA-Z0-9]+$/.test(cid)||!["application/pdf","image/png","image/jpeg"].includes(mimeType))return res.status(400).json({error:"Provide a template name and a valid uploaded PDF, PNG or JPG CID."});
+ try {const active=Boolean(req.body?.active);if(active)req.university.certificateTemplates.forEach(t=>t.active=false);req.university.certificateTemplates.push({name,cid,url:"https://gateway.pinata.cloud/ipfs/"+cid,mimeType,fieldMap:req.body?.fieldMap||{},active});await req.university.save();return res.status(201).json({templates:req.university.certificateTemplates});}
+ catch{return res.status(503).json({error:"Could not save certificate template."});}
+});
+app.patch("/api/university/templates/:templateId/active",requireUniversity,async(req,res)=>{
+ const target=req.university.certificateTemplates.id(req.params.templateId);if(!target)return res.status(404).json({error:"Template not found."});
+ req.university.certificateTemplates.forEach(t=>t.active=String(t._id)===String(target._id));await req.university.save();return res.json({templates:req.university.certificateTemplates});
+});
+app.patch("/api/university/password",requireUniversity,async(req,res)=>{
+ const current=String(req.body?.currentPassword||""),next=String(req.body?.newPassword||"");if(next.length<10)return res.status(400).json({error:"New password must be at least 10 characters."});
+ if(!(await bcrypt.compare(current,req.university.passwordHash)))return res.status(401).json({error:"Current password is incorrect."});
+ req.university.passwordHash=await bcrypt.hash(next,12);await req.university.save();return res.json({updated:true});
 });
 
 app.get("/api/university/history", async (req, res) => {
