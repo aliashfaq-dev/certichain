@@ -114,13 +114,15 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
   try {
     await connectMongo();
     student = await Student.findOne({ email: normalizedEmail });
+    const isNewStudent = !student;
+    const previousPasswordHash = student?.passwordHash || null;
+    // Issue a fresh portal credential with every certificate email so the
+    // password in the latest email always matches the account.
+    temporaryPassword = crypto.randomBytes(12).toString("base64url");
     if (!student) {
-      temporaryPassword = crypto.randomBytes(12).toString("base64url");
-      student = await Student.create({
-        email: normalizedEmail,
-        passwordHash: await bcrypt.hash(temporaryPassword, 12),
-        certificates: []
-      });
+      student = new Student({ email: normalizedEmail, passwordHash: await bcrypt.hash(temporaryPassword, 12), certificates: [] });
+    } else {
+      student.passwordHash = await bcrypt.hash(temporaryPassword, 12);
     }
     if (!student.certificates.some(item => item.certificateId.toLowerCase() === certificateId.toLowerCase())) {
       student.certificates.push({
@@ -130,8 +132,10 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
         verificationUrl,
         documentUrl: typeof documentUrl === "string" && documentUrl.startsWith("https://") ? documentUrl : ""
       });
-      await student.save();
     }
+    await student.save();
+    student._previousPasswordHash = previousPasswordHash;
+    student._isNewStudent = isNewStudent;
   } catch (error) {
     console.error("Student account persistence failed:", error.message);
     return res.status(503).json({ error: (error.message.includes("MONGO_URI") || error.message.includes("MONGODB_URI")) ? error.message : "Student account service is temporarily unavailable." });
@@ -172,7 +176,7 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      if (temporaryPassword && student) await Student.deleteOne({ _id: student._id }).catch(() => {});
+      if (temporaryPassword && student) { if (student._isNewStudent) await Student.deleteOne({ _id: student._id }).catch(() => {}); else if (student._previousPasswordHash) await Student.updateOne({ _id: student._id }, { $set: { passwordHash: student._previousPasswordHash } }).catch(() => {}); }
       console.error("Resend email failed:", { status: response.status, message: payload.message || payload.name });
       return res.status(502).json({ error: payload.message || "Email provider rejected the message." });
     }
@@ -187,7 +191,7 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
 const studentAuthLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: "draft-8", legacyHeaders: false });
 app.post("/api/student/login", studentAuthLimiter, async (req, res) => {
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-  const password = typeof req.body?.password === "string" ? req.body.password : "";
+  const password = typeof req.body?.password === "string" ? req.body.password.trim() : "";
   if (!email || !password) return res.status(400).json({ error: "Email and password are required." });
   try {
     await connectMongo();
