@@ -138,7 +138,7 @@ export default function App() {
   async function verify(id=lookupId) {
     setBusy(true); setNotice(""); setResult(null); setQr("");
     try {
-      if (!/^0x[0-9a-fA-F]{64}$/.test(id.trim())) throw new Error("Certificate ID ya document SHA-256 hash 0x + 64 hex characters hona chahiye.");
+      if (!/^0x[0-9a-fA-F]{64}$/.test(id.trim())) throw new Error("Enter a certificate ID or SHA-256 document hash in 0x format.");
       const contract=getReadContract();
       let certificateId=id.trim();
       let cert;
@@ -354,7 +354,7 @@ export default function App() {
       if (!universityCodeInput.trim() || !universityNameInput.trim()) throw new Error("Both university code and name are required.");
       const universityId=keccak256(toUtf8Bytes(universityCodeInput.trim().toUpperCase()));
       const tx=await contract.registerUniversity(universityWalletInput,universityId,universityNameInput.trim());
-      setNotice(`University registration submitted: ${tx.hash}. Confirmation ka wait…`);
+      setNotice(`University registration submitted: ${tx.hash}. Waiting for confirmation…`);
       await tx.wait();
       setUniversityWalletInput(""); setUniversityCodeInput(""); setUniversityNameInput("");
       setNotice("University authorized successfully. It can now issue certificates from its wallet.");
@@ -431,18 +431,18 @@ export default function App() {
       <section className="hero">
         <div className="eyebrow"><span/> OPEN, INDEPENDENT VERIFICATION</div>
         <h1>Verify credentials.<br/><em>Trust the record.</em></h1>
-        <p>Enter a certificate ID or document SHA-256 hash to verify authenticity against the blockchain. No wallet required.</p>
-        <div className="hero-stats"><span><b>01</b> On-chain proof</span><span><b>02</b> Issuer identity</span><span><b>03</b> Public verification</span></div>
+        <p>Verify a certificate using its ID or document hash.</p>
+        
       </section>
       <section className="workspace">
         <div className="panel">
-          <div className="panel-heading"><div><div className="eyebrow">PUBLIC VERIFICATION</div><h2>Check a certificate</h2><p>Paste the certificate ID or SHA-256 document hash provided by the student or institution.</p></div><div className="panel-icon">✓</div></div>
+          <div className="panel-heading"><div><div className="eyebrow">PUBLIC VERIFICATION</div><h2>Check a certificate</h2><p></p></div><div className="panel-icon">✓</div></div>
           
           <label htmlFor="certificate">Certificate ID / Document hash</label>
           <div className="input-row"><input id="certificate" value={lookupId} onChange={e=>setLookupId(e.target.value)} placeholder="0x + 64 hexadecimal characters"/><button className="button button-primary" onClick={()=>verify()} disabled={busy}>{busy?"Checking…":"Verify certificate"}</button></div>
           {result && <div className="result-card">
-            <div className="status-line"><span className={result.status==="VALID"?"status status-valid":"status status-revoked"}>{result.status==="VALID"?"✓ VALID CERTIFICATE":"✕ REVOKED CERTIFICATE"}</span><span className="muted">BLOCKCHAIN RECORD</span></div>
-            <div className="details-grid"><div><small>Certificate ID</small><strong>{short(result.certificateId)}</strong></div><div><small>University</small><strong>{result.universityName || short(result.universityId)}</strong></div><div><small>University ID</small><strong>{short(result.universityId)}</strong></div><div><small>Recipient reference</small><strong>{short(result.recipient)}</strong></div><div><small>Issued by</small><strong>{short(result.issuer)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Revocation status</small><strong>{result.revoked?"Revoked":"Not revoked"}</strong></div></div>
+            <div className="status-line"><span className={result.status==="VALID"?"status status-valid":"status status-revoked"}>{result.status==="VALID"?"✓ VALID CERTIFICATE":"✕ REVOKED CERTIFICATE"}</span><span className="muted">VERIFICATION RESULT</span></div>
+            <div className="details-grid"><div><small>Certificate ID</small><strong>{short(result.certificateId)}</strong></div><div><small>University</small><strong>{result.universityName || short(result.universityId)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Revocation status</small><strong>{result.revoked?"Revoked":"Not revoked"}</strong></div></div>
             
             <div className="cid-row"><span>IPFS certificate file</span><a href={ipfsUrl(result.ipfsCid)} target="_blank" rel="noreferrer">View / download document ↗</a></div>
             
@@ -468,7 +468,7 @@ export default function App() {
           {studentToken && <div className="certificate-list">
             {emailCertificates.map(cert=><article className="student-cert" key={cert.certificateId}>
               <div className="status-line"><span className={cert.revoked?"status status-revoked":"status status-valid"}>{cert.revoked?"REVOKED":"VERIFIED CREDENTIAL"}</span><span className="muted">{cert.issuedAt}</span></div>
-              <h3>Certificate {short(cert.certificateId)}</h3><p>{cert.universityName || "University"} · ID: <strong>{short(cert.universityId)}</strong></p>
+              <h3>Certificate {short(cert.certificateId)}</h3><p>{cert.universityName || "University"}</p>
               
               <div className="student-cert-actions"><a className="button button-primary" href={ipfsUrl(cert.ipfsCid)} target="_blank" rel="noreferrer">View / download</a><button className="button button-outline" onClick={()=>{setLookupId(cert.certificateId);setPage("verify");verify(cert.certificateId)}}>Verify</button></div>
             </article>)}
@@ -528,6 +528,6 @@ export default function App() {
     </>}
 
     {notice && (/Uploading|Waiting for|Searching blockchain|Confirm the issuance transaction|Transaction submitted/i.test(notice) ? <div className="notice" role="status">{notice}</div> : <div className="alert-backdrop" role="presentation" onClick={()=>setNotice("")}><section className="custom-alert" role="alertdialog" aria-modal="true" aria-label="Notification" onClick={event=>event.stopPropagation()}><div className={/failed|error|invalid|denied|not found|unavailable|could not|rejected|expired|required|must be|not configured/i.test(notice)?"alert-icon alert-error":"alert-icon"}>{/failed|error|invalid|denied|not found|unavailable|could not|rejected|expired|required|must be|not configured/i.test(notice)?"!":"✓"}</div><h3>{/failed|error|invalid|denied|not found|unavailable|could not|rejected|expired|required|must be|not configured/i.test(notice)?"Something went wrong":"Notification"}</h3><p>{notice}</p><button className="button button-primary" onClick={()=>setNotice("")}>Got it</button></section></div>)}
-    <footer className="footer"><span>CertiChain © 2026</span><span>Ethereum-compatible network · IPFS document storage</span></footer>
+    <footer className="footer"><span>CertiChain © 2026</span></footer>
   </main>;
 }
