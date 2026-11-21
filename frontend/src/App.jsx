@@ -55,6 +55,7 @@ export default function App() {
   const [universityTab,setUniversityTab] = useState("issue");
   const [universityHistory,setUniversityHistory] = useState([]);
   const [historySort,setHistorySort] = useState("newest");
+  const [nextCertificateNumber,setNextCertificateNumber] = useState("");
   const [emailCertificates,setEmailCertificates] = useState([]);
   const [studentEmail,setStudentEmail] = useState("");
   const [studentPassword,setStudentPassword] = useState("");
@@ -174,12 +175,14 @@ export default function App() {
       const universityId=university.universityId;
       setUniversityProfile({universityId,name:university.name,active:university.active});
       if (!file) throw new Error("Please select a certificate PDF or image.");
-      if (!certificateNumber.trim()) throw new Error("Please enter a unique certificate number.");
+      if (!nextCertificateNumber) throw new Error("Certificate number is not ready. Refresh certificate history.");
+      const issuedNumber=nextCertificateNumber;
+      if (universityHistory.some(item=>item.certificateNumber===issuedNumber)) throw new Error("Certificate number already exists. Refresh history.");
       const normalizedEmail=recipientEmail.trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new Error("A valid student email address is required.");
       if (recipient.trim() && !isAddress(recipient.trim())) throw new Error("Enter a valid student wallet address or leave the field blank.");
       if (file.size>10*1024*1024) throw new Error("The file must be smaller than 10 MB.");
-      const id=keccak256(toUtf8Bytes(`${universityId}:${certificateNumber.trim()}`));
+      const id=keccak256(toUtf8Bytes(`${universityId}:${issuedNumber}`));
       // If a student has no wallet, create a random opaque on-chain recipient reference.
       // Do not derive it from the email: the email itself and any reversible identifier stay off-chain.
       const randomRecipientBytes=crypto.getRandomValues(new Uint8Array(20));
@@ -213,7 +216,7 @@ export default function App() {
           body:JSON.stringify({
             email:normalizedEmail,
             universityName:university.name,
-            certificateNumber:certificateNumber.trim(),
+            certificateNumber:issuedNumber,
             certificateId:id,
             verificationUrl:verificationUrl.toString(),
             documentUrl:ipfsUrl(uploadData.cid),
@@ -244,7 +247,10 @@ export default function App() {
       const response=await fetch(url);
       const payload=await response.json().catch(()=>({}));
       if (!response.ok) throw new Error(payload.error || "Could not load certificate history.");
-      setUniversityHistory(payload.certificates || []);
+      const records=payload.certificates || [];
+      setUniversityHistory(records);
+      const maxNumber=records.reduce((max,item)=>{const match=String(item.certificateNumber||"").match(/-(\\d+)$/);return match?Math.max(max,Number(match[1])):max;},0);
+      setNextCertificateNumber(`${String(account.slice(2,6)).toUpperCase()}-${String(maxNumber+1).padStart(5,"0")}`);
     } catch(error) { setNotice(error.message || "Could not load certificate history."); }
   }
   async function loadEmailCertificates(token=studentToken) {
@@ -515,7 +521,7 @@ export default function App() {
           <div className="admin-authorized"><span>UNIVERSITY ISSUER</span><strong>{universityProfile.name}</strong></div>
           <div className="tabs university-tabs"><button type="button" className={universityTab==="issue"?"active":""} onClick={()=>setUniversityTab("issue")}>Issue certificate</button><button type="button" className={universityTab==="history"?"active":""} onClick={()=>{setUniversityTab("history");loadUniversityHistory(wallet)}}>Certificate history</button></div>
           {universityTab==="issue" && <form onSubmit={issue}>
-            <label htmlFor="cert-number">Certificate number</label><input id="cert-number" value={certificateNumber} onChange={e=>setCertificateNumber(e.target.value)} placeholder="e.g. 2026-CS-0001" required/>
+            <label>Certificate number</label><div className="generated-number"><strong>{nextCertificateNumber || "Generating…"}</strong><span>Automatically assigned · Locked</span></div>
             <label htmlFor="recipient-email">Student email</label><input id="recipient-email" type="email" value={recipientEmail} onChange={e=>setRecipientEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" required/>
             <label htmlFor="recipient">Student wallet <span className="optional-mark">OPTIONAL</span></label><input id="recipient" value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="0x…"/>
             <label htmlFor="document">Certificate file</label><input id="document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={e=>setFile(e.target.files?.[0]||null)} required/>
