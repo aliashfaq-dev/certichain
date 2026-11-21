@@ -48,6 +48,9 @@ export default function App() {
   const [recipient,setRecipient] = useState("");
   const [recipientEmail,setRecipientEmail] = useState("");
   const [file,setFile] = useState(null);
+  const [studentName,setStudentName]=useState("");
+  const [degreeName,setDegreeName]=useState("");
+  const [selectedTemplateId,setSelectedTemplateId]=useState("");
   const [lookupId,setLookupId] = useState(new URLSearchParams(window.location.search).get("cert") || "");
   const [result,setResult] = useState(null);
   const [qr,setQr] = useState("");
@@ -205,9 +208,17 @@ export default function App() {
       const randomRecipientBytes=crypto.getRandomValues(new Uint8Array(20));
       const generatedRecipient="0x"+Array.from(randomRecipientBytes,byte=>byte.toString(16).padStart(2,"0")).join("");
       const recipientAddress=recipient.trim() || generatedRecipient;
-      const documentHash=await hashFile(file);
+      let certificateFile=file;
+      if(selectedTemplateId){
+        setNotice("Preparing signed university certificate and verification QR…");
+        const renderForm=new FormData();renderForm.append("file",file);renderForm.append("studentName",studentName);renderForm.append("degreeName",degreeName);renderForm.append("issueDate",new Date().toISOString());renderForm.append("verificationUrl",new URL(`?cert=${id}`,window.location.origin).toString());
+        const rendered=await fetch(`${API_URL.replace(/\/$/,"")}/api/university/render-certificate`,{method:"POST",headers:{Authorization:"Bearer "+universityToken},body:renderForm});
+        if(!rendered.ok){const error=await rendered.json().catch(()=>({}));throw new Error(error.error||"Could not prepare certificate PDF.");}
+        certificateFile=new File([await rendered.blob()],`CertiChain-${issuedNumber}.pdf`,{type:"application/pdf"});
+      }
+      const documentHash=await hashFile(certificateFile);
       setNotice("Uploading certificate to IPFS…");
-      const form=new FormData(); form.append("file",file);
+      const form=new FormData(); form.append("file",certificateFile);
       let uploadResponse;
       try {
         uploadResponse=await fetch(`${API_URL.replace(/\/$/,"")}/api/ipfs/upload`,{method:"POST",body:form});
@@ -220,7 +231,7 @@ export default function App() {
       const tx=await contract.issueCertificate(universityId,id,recipientAddress,documentHash,uploadData.cid);
       setNotice(`Transaction submitted: ${tx.hash}. Waiting for transaction confirmation…`);
       await tx.wait();
-      setCertificateNumber(""); setRecipient(""); setRecipientEmail(""); setFile(null);
+      setCertificateNumber(""); setRecipient(""); setRecipientEmail(""); setFile(null); setStudentName(""); setDegreeName(""); setSelectedTemplateId("");
       setLookupId(id); setPage("verify");
       await verify(id);
       const verificationUrl=new URL(window.location.href);
@@ -240,7 +251,7 @@ export default function App() {
             transactionHash:tx.hash,
              universityWallet:account,
              recipientWallet:recipientAddress,
-             documentMimeType:file.type
+             documentMimeType:certificateFile.type
           })
         });
         const emailData=await emailResponse.json().catch(()=>({}));
@@ -408,7 +419,7 @@ export default function App() {
   async function loadTemplateForIssuance(id){
     const template=universityTemplates.find(item=>String(item._id)===String(id));if(!template)return;
     setBusy(true);
-    try{const response=await fetch(template.url);if(!response.ok)throw new Error("Could not download this template from IPFS.");const blob=await response.blob();const ext=template.mimeType==="application/pdf"?"pdf":template.mimeType==="image/png"?"png":"jpg";setFile(new File([blob],template.name+"."+ext,{type:template.mimeType}));setNotice("Template selected. Add student details and issue the certificate.");}
+    try{const response=await fetch(template.url);if(!response.ok)throw new Error("Could not download this template from IPFS.");const blob=await response.blob();const ext=template.mimeType==="application/pdf"?"pdf":template.mimeType==="image/png"?"png":"jpg";setFile(new File([blob],template.name+"."+ext,{type:template.mimeType}));setSelectedTemplateId(String(template._id));setNotice("Template selected. Add student details and issue the certificate.");}
     catch(error){setNotice(error.message);}finally{setBusy(false);}
   }
   async function activateTemplate(id){try{const r=await fetch(API_URL.replace(/\/$/,"")+`/api/university/templates/${id}/active`,{method:"PATCH",headers:{Authorization:"Bearer "+universityToken}});const d=await r.json();if(!r.ok)throw new Error(d.error);setUniversityTemplates(d.templates);setNotice("Active template changed.");}catch(e){setNotice(e.message);}}
@@ -576,9 +587,12 @@ export default function App() {
           {universityTab==="profile"&&<div className="university-settings"><h3>University profile</h3><form onSubmit={saveUniversityProfile}><label>Name</label><input value={profileName} onChange={e=>setProfileName(e.target.value)} required/><label>University code</label><input value={profileCode} onChange={e=>setProfileCode(e.target.value.toUpperCase())} required/><button className="button button-primary">Save profile</button></form><form onSubmit={changeUniversityPassword}><h3>Change password</h3><label>Current password</label><input type="password" value={currentUniversityPassword} onChange={e=>setCurrentUniversityPassword(e.target.value)} required/><label>New password</label><input type="password" minLength={10} value={newUniversityPassword} onChange={e=>setNewUniversityPassword(e.target.value)} required/><button className="button button-outline">Update password</button></form><p>Official email: {universityAccount?.email||universityEmail}</p></div>}
           {universityTab==="issue" && <form onSubmit={issue}>
             <label>Certificate number</label><div className="generated-number"><strong>{nextCertificateNumber || "Generating…"}</strong><span>Automatically assigned · Locked</span></div>
+            <label htmlFor="student-name">Student full name</label><input id="student-name" value={studentName} onChange={e=>setStudentName(e.target.value)} placeholder="Student full name" required/>
+            <label htmlFor="degree-name">Degree / programme</label><input id="degree-name" value={degreeName} onChange={e=>setDegreeName(e.target.value)} placeholder="e.g. BS Computer Science" required/>
             <label htmlFor="recipient-email">Student email</label><input id="recipient-email" type="email" value={recipientEmail} onChange={e=>setRecipientEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" required/>
             <label htmlFor="recipient">Student wallet <span className="optional-mark">OPTIONAL</span></label><input id="recipient" value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="0x…"/>
-            {universityTemplates.length>0&&<><label htmlFor="template-select">Choose saved certificate template</label><select id="template-select" defaultValue="" onChange={e=>loadTemplateForIssuance(e.target.value)}><option value="" disabled>Select a template</option>{universityTemplates.map(t=><option key={t._id} value={t._id}>{t.name}{t.active?" (Active)":""}</option>)}</select></>}\n            <label htmlFor="document">Certificate file (or replace selected template)</label><input id="document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={e=>setFile(e.target.files?.[0]||null)} required/>
+            {universityTemplates.length>0&&<><label htmlFor="template-select">Choose saved certificate template</label><select id="template-select" defaultValue="" onChange={e=>loadTemplateForIssuance(e.target.value)}><option value="" disabled>Select a template</option>{universityTemplates.map(t=><option key={t._id} value={t._id}>{t.name}{t.active?" (Active)":""}</option>)}</select></>}
+            <label htmlFor="document">Certificate file (or replace selected template)</label><input id="document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={e=>{setFile(e.target.files?.[0]||null);setSelectedTemplateId("");}} required/>
             {file && <p className="file-note">{file.name} · {(file.size/1024/1024).toFixed(2)} MB</p>}
             <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Processing…":"Issue certificate"}</button>
           </form>}
