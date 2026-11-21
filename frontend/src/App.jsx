@@ -122,9 +122,26 @@ export default function App() {
   async function connectWallet() {
     try {
       const {account}=await getWalletSigner();
+      if (page==="owner") {
+        const ok=await checkAdmin(account);
+        if(!ok)throw new Error("Only the platform owner wallet can access this page.");
+      } else if(page==="verify") {
+        const contract=getReadContract();
+        const platformOwner=await contract.owner();
+        if(platformOwner.toLowerCase()===account.toLowerCase()) {
+          setOwner(platformOwner);navigate("/platform-control","owner");setNotice("Platform owner wallet verified.");
+          return;
+        }
+        const issuer=await contract.getUniversity(account);
+        if(issuer.active) {
+          navigate("/university-office","university");
+          setNotice("University issuer wallet detected. Sign in with your official university email.");
+          return;
+        }
+      } else if (page==="student") {
+        await loadStudentCertificates(account);
+      }
       setNotice("Wallet connected: " + short(account));
-      if (page==="owner") {const ok=await checkAdmin(account);if(!ok)throw new Error("Only the platform owner wallet can access this page.");}
-      if (page==="student") await loadStudentCertificates(account);
     } catch(error) { setNotice(error.shortMessage || error.message || "Wallet connection failed."); }
   }
 
