@@ -251,7 +251,8 @@ export default function App() {
             transactionHash:tx.hash,
              universityWallet:account,
              recipientWallet:recipientAddress,
-             documentMimeType:certificateFile.type
+             documentMimeType:certificateFile.type,
+            qrAlreadyEmbedded:Boolean(selectedTemplateId)
           })
         });
         const emailData=await emailResponse.json().catch(()=>({}));
