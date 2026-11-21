@@ -114,3 +114,34 @@ button,input{font:inherit}button{cursor:pointer}a{color:inherit}
 .generated-number{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 14px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);margin:0 0 15px}.generated-number strong{font:600 14px "DM Mono",monospace;letter-spacing:.5px;color:var(--accent)}.generated-number span{font-size:10px;color:var(--muted);text-align:right}@media(max-width:520px){.generated-number{align-items:flex-start;flex-direction:column}.generated-number span{text-align:left}}
 
 .university-auth-card,.university-settings{margin:22px 0;padding:22px;border:1px solid var(--line);border-radius:18px;background:var(--panel)}.university-auth-card>p,.university-settings>p{color:var(--muted);line-height:1.6}.university-auth-card form,.university-settings form{display:grid;gap:10px;margin:18px 0}.university-auth-card input,.university-settings input{width:100%;min-width:0}.university-settings h3{margin-top:10px}
+
+/* Full-screen CertiChain workspace */
+html,body,#root{width:100%;min-height:100%;margin:0}
+.app-shell{width:100%;max-width:none;min-height:100vh;margin:0;padding:0 42px 42px 286px;animation:none}
+.topbar{position:fixed;z-index:50;left:0;top:0;bottom:0;width:248px;height:100vh;padding:30px 22px;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:28px;border:0;border-right:1px solid var(--border);background:var(--surface)}
+.brand{font-size:27px}
+.nav-actions{display:grid;grid-template-columns:1fr;align-items:stretch;margin-top:auto}
+.network{margin:0;padding:12px 0;border-top:1px solid var(--border)}
+.portal-nav{position:fixed;z-index:51;left:14px;top:125px;width:220px;max-width:none;display:grid;gap:5px;margin:0;padding:8px;border:0;background:transparent}
+.portal-nav button{text-align:left;padding:14px 15px;border-radius:10px;font-size:12px}
+.portal-nav button.active{background:var(--accent-soft);color:var(--accent);box-shadow:none}
+.portal-nav button span{display:inline-block;margin-left:8px}
+.hero{max-width:100%;padding:54px 0 34px}
+.hero h1{max-width:900px}
+.workspace{width:100%;max-width:none}
+.panel{width:100%;max-width:none;padding:clamp(22px,3vw,38px);border-radius:18px}
+.footer{margin-top:44px;padding:18px 0;border-top:1px solid var(--border);text-align:left}
+.university-settings,.university-auth-card{background:var(--surface);border-color:var(--border)}
+.university-auth-card form,.university-settings form{max-width:720px}
+input,select,textarea{max-width:100%}
+@media(max-width:760px){
+ .app-shell{padding:0 16px 28px}
+ .topbar{position:relative;left:auto;top:auto;bottom:auto;width:100%;height:auto;padding:16px 0;display:flex;flex-direction:row;align-items:center;border-right:0;border-bottom:1px solid var(--border);background:transparent}
+ .brand{font-size:22px}.nav-actions{display:flex;flex-direction:row;margin:0;gap:7px}.network{display:none}
+ .portal-nav{position:relative;left:auto;top:auto;width:100%;display:flex;gap:4px;margin:12px 0 0;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:12px}
+ .portal-nav button{flex:1;text-align:center;padding:10px 5px;font-size:10px}
+ .portal-nav button span{display:block;margin:3px 0 0}
+ .hero{padding:40px 0 26px}.hero h1{font-size:clamp(36px,10vw,56px);letter-spacing:-2px}
+ .panel{padding:18px;border-radius:14px}
+}
+@media(min-width:761px) and (max-width:1050px){.app-shell{padding-left:258px;padding-right:24px}.topbar{width:224px}.portal-nav{width:200px}}
