@@ -176,8 +176,11 @@ export default function App() {
       setUniversityProfile({universityId,name:university.name,active:university.active});
       if (!file) throw new Error("Please select a certificate PDF or image.");
       if (!nextCertificateNumber) throw new Error("Certificate number is not ready. Refresh certificate history.");
-      const issuedNumber=nextCertificateNumber;
-      if (universityHistory.some(item=>item.certificateNumber===issuedNumber)) throw new Error("Certificate number already exists. Refresh history.");
+      const sequenceResponse=await fetch(`${API_URL.replace(/\/$/,"")}/api/university/next-number`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({wallet:account,universityId:String(university.universityId),universityName:String(university.name)})});
+      const sequenceData=await sequenceResponse.json().catch(()=>({}));
+      if(!sequenceResponse.ok || !sequenceData.certificateNumber) throw new Error(sequenceData.error || "Could not reserve a unique certificate number.");
+      const issuedNumber=sequenceData.certificateNumber;
+      setNextCertificateNumber(issuedNumber);
       const normalizedEmail=recipientEmail.trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new Error("A valid student email address is required.");
       if (recipient.trim() && !isAddress(recipient.trim())) throw new Error("Enter a valid student wallet address or leave the field blank.");
