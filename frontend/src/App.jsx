@@ -255,7 +255,7 @@ export default function App() {
     if (!studentEmail.trim()) { setNotice("Enter your student email address first."); return; }
     setBusy(true); setNotice("");
     try {
-      const response=await fetch(API_URL.replace(/\\/$/,"")+"/api/student/resend-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:studentEmail.trim().toLowerCase()})});
+      const response=await fetch(API_URL.replace(/\/$/,"")+"/api/student/resend-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:studentEmail.trim().toLowerCase()})});
       const payload=await response.json().catch(()=>({}));
       if (!response.ok) throw new Error(payload.error || "Could not send a password email.");
       setNotice(payload.message || "If your account exists, a new password has been emailed.");
