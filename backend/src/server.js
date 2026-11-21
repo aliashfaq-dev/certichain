@@ -330,29 +330,6 @@ app.post("/api/university/next-number", sequenceLimiter, async (req, res) => {
 });
 
 
-
- try{
-  await connectMongo();
-  const rpc=process.env.RPC_URL||process.env.SEPOLIA_RPC_URL||"https://ethereum-sepolia-rpc.publicnode.com";
-  const contractAddress=process.env.CONTRACT_ADDRESS||"0x396F092208aDC112B02f237bEe969f01c07c9DFB";
-  const {JsonRpcProvider,Contract,verifyMessage}=await import("ethers");
-  const provider=new JsonRpcProvider(rpc);
-  const contract=new Contract(contractAddress,["function owner() view returns (address)","function getUniversity(address) view returns (tuple(bytes32 universityId,string name,bool active))"],provider);
-  const owner=await contract.owner();
-  const message="CertiChain Owner Creates University Account\nWallet: "+wallet+"\nEmail: "+email+"\nUniversity: "+universityName+"\nCode: "+universityCode;
-  if(verifyMessage(message,signature).toLowerCase()!==owner.toLowerCase())return res.status(403).json({error:"Only the platform owner wallet can create university accounts."});
-  const chainUniversity=await contract.getUniversity(wallet);
-  if(!chainUniversity.active||chainUniversity.name!==universityName)return res.status(403).json({error:"Authorize this wallet on-chain first and use the exact registered university name."});
-  if(await UniversityAccount.findOne({$or:[{email},{wallet}]}))return res.status(409).json({error:"A university account already exists for this email or wallet."});
-  const account=new UniversityAccount({email,passwordHash:await bcrypt.hash(password,12),universityName,universityCode,wallet,verified:true});
-  await account.save();
-  try{
-   await sendEmail({to:email,subject:"Your CertiChain university account",text:"The CertiChain platform owner created your university issuer account.\nUniversity: "+universityName+"\nLogin email: "+email+"\nInitial password: "+password+"\nAuthorized wallet: "+wallet+"\nOpen the CertiChain website and sign in through the University portal. Change your password after your first login.",html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#172033"><h2>Your university issuer account is ready</h2><p>The CertiChain platform owner has created your university account.</p><p><b>University:</b> ${universityName}<br/><b>Login email:</b> ${email}<br/><b>Initial password:</b> <code>${password}</code><br/><b>Authorized wallet:</b> ${wallet}</p><p>Sign in to CertiChain and change your password after your first login.</p></div>`});
-  }catch(error){await UniversityAccount.deleteOne({_id:account._id});throw error;}
-  return res.status(201).json({created:true,email});
- }catch(error){console.error("Owner university account creation failed:",error.message);return res.status(503).json({error:error.message.includes("SMTP")?"Email service is not configured. Configure SMTP before creating university accounts.":"Could not create university account. Check that the wallet is authorized and email is not already registered."});}
-});
-
 const universityAuthLimiter = rateLimit({ windowMs: 15*60*1000, limit: 10, standardHeaders: "draft-8", legacyHeaders: false });
 app.post("/api/admin/university-account", universityAuthLimiter, async(req,res)=>{
  const wallet=String(req.body?.wallet||"").toLowerCase(),email=String(req.body?.email||"").trim().toLowerCase(),password=String(req.body?.password||""),universityName=String(req.body?.universityName||"").trim(),universityCode=String(req.body?.universityCode||"").trim().toUpperCase(),signature=String(req.body?.signature||"");
