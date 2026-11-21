@@ -118,6 +118,15 @@ function createUniversityToken(account) {
   if (!process.env.JWT_SECRET) throw new Error("University authentication is not configured.");
   return jwt.sign({ sub: String(account._id), email: account.email, role: "university", wallet: account.wallet }, process.env.JWT_SECRET, { expiresIn: "12h" });
 }
+async function isAuthorizedUniversityWallet(wallet){
+ const rpc=process.env.RPC_URL||process.env.SEPOLIA_RPC_URL||"https://ethereum-sepolia-rpc.publicnode.com";
+ const address=process.env.CONTRACT_ADDRESS||"0x396F092208aDC112B02f237bEe969f01c07c9DFB";
+ const {JsonRpcProvider,Contract}=await import("ethers");
+ const provider=new JsonRpcProvider(rpc);
+ const contract=new Contract(address,["function getUniversity(address wallet) view returns (tuple(bytes32 universityId,string name,bool active))"],provider);
+ const university=await contract.getUniversity(wallet);
+ return Boolean(university.active);
+}
 async function requireUniversity(req,res,next) {
   try {
     const token=(req.headers.authorization||"").replace(/^Bearer /,"");
@@ -334,6 +343,7 @@ app.post("/api/university/auth/register", universityAuthLimiter, async (req,res)
  let pendingAccountId=null;
  try {
   await connectMongo();
+  if(!(await isAuthorizedUniversityWallet(wallet))) return res.status(403).json({error:"This wallet has not been authorized as an active university issuer by the platform owner."});
   const challenge=await UniversityNonce.findOne({wallet});
   if(!challenge||challenge.nonce!==nonce||challenge.expiresAt<Date.now()) return res.status(400).json({error:"Wallet verification expired. Request a new challenge."});
   const {verifyMessage}=await import("ethers");
