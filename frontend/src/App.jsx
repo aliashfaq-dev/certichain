@@ -266,16 +266,28 @@ export default function App() {
     setBusy(true); setNotice("");
     try {
       const contract=getReadContract();
-      const events=await contract.queryFilter(contract.filters.CertificateIssued(null,null,account),0,"latest");
-      const records=await Promise.all(events.map(async event=>{
+      const filter=contract.filters.CertificateIssued(null,null,account);
+      const latest=await readProvider.getBlockNumber();
+      const events=[];
+      // Avoid oversized eth_getLogs requests: some RPCs return a generic
+      // "could not coalesce error" when asked for the entire chain at once.
+      const chunkSize=10000;
+      for(let toBlock=latest;toBlock>=0;toBlock-=chunkSize) {
+        const fromBlock=Math.max(0,toBlock-chunkSize+1);
+        const chunk=await contract.queryFilter(filter,fromBlock,toBlock);
+        events.push(...chunk);
+      }
+      const records=[];
+      // Keep calls sequential to avoid provider batching/rate-limit errors.
+      for(const event of events) {
         const id=event.args.certificateId;
         const cert=await contract.getCertificate(id);
         const university=await contract.getUniversity(cert.issuer);
-        return {certificateId:id,universityId:cert.universityId,universityName:university.name,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
-      }));
+        records.push({certificateId:id,universityId:cert.universityId,universityName:university.name,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked});
+      }
       setStudentCertificates(records.reverse());
       if (!records.length) setNotice("No certificates were found for this wallet address.");
-    } catch(error) { setNotice(error.shortMessage || error.message || "Could not load certificates. Check the RPC provider limits."); }
+    } catch(error) { setNotice(error.shortMessage || error.reason || error.message || "Could not load certificates. Check the RPC provider limits."); }
     finally { setBusy(false); }
   }
 
