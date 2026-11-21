@@ -9,14 +9,51 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import nodemailer from "nodemailer";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import QRCode from "qrcode";
 
 const app = express();
 async function sendEmail({ to, subject, text, html }) {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) throw new Error("SMTP is not configured. Add SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and SMTP_FROM.");
   const transporter = nodemailer.createTransport({ host: SMTP_HOST, port: Number(SMTP_PORT), secure: String(process.env.SMTP_SECURE || "true").toLowerCase() === "true", auth: { user: SMTP_USER, pass: SMTP_PASS } });
-  return transporter.sendMail({ from: SMTP_FROM, to, subject, text, html });
+  return transporter.sendMail({ from: SMTP_FROM, to, subject, text, html, attachments: arguments[0].attachments || [] });
 }
+
+async function buildCertificatePdf({ documentUrl, verificationUrl, certificateNumber, universityName }) {
+  let pdf;
+  if (typeof documentUrl === "string" && documentUrl.startsWith("https://gateway.pinata.cloud/ipfs/")) {
+    const response = await fetch(documentUrl);
+    if (!response.ok) throw new Error("Could not retrieve the original certificate file for the email PDF.");
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    if (contentType.includes("application/pdf") || documentUrl.toLowerCase().endsWith(".pdf")) {
+      pdf = await PDFDocument.load(bytes);
+    } else {
+      pdf = await PDFDocument.create();
+      const page = pdf.addPage([595.28, 841.89]);
+      const image = contentType.includes("png") ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+      const scale = Math.min(515 / image.width, 700 / image.height);
+      page.drawImage(image, { x: (595.28 - image.width * scale) / 2, y: (841.89 - image.height * scale) / 2 + 35, width: image.width * scale, height: image.height * scale });
+    }
+  } else {
+    pdf = await PDFDocument.create();
+    const page = pdf.addPage([595.28, 841.89]);
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    page.drawText(String(universityName || "Academic Institution"), { x: 48, y: 760, size: 20, font, color: rgb(0.12,0.18,0.32) });
+    page.drawText("Certificate record", { x: 48, y: 720, size: 14, font });
+    page.drawText("Certificate number: " + String(certificateNumber || "—"), { x: 48, y: 690, size: 11, font });
+  }
+  if (!pdf.getPageCount()) pdf.addPage([595.28, 841.89]);
+  const qrBytes = await QRCode.toBuffer(verificationUrl, { type: "png", width: 220, margin: 1 });
+  const qrImage = await pdf.embedPng(qrBytes);
+  const firstPage = pdf.getPages()[0];
+  const qrSize = 76;
+  firstPage.drawRectangle({ x: firstPage.getWidth()-qrSize-20, y: 18, width: qrSize+12, height: qrSize+24, color: rgb(1,1,1), borderColor: rgb(0.86,0.88,0.92), borderWidth: 0.7 });
+  firstPage.drawImage(qrImage, { x: firstPage.getWidth()-qrSize-14, y: 36, width: qrSize, height: qrSize });
+  return Buffer.from(await pdf.save());
+}
+
 // Vercel sits behind a trusted proxy; this lets express-rate-limit use the client IP.
 app.set("trust proxy", 1);
 const port = Number(process.env.PORT || 4000);
@@ -40,6 +77,20 @@ const Student = mongoose.models.Student || mongoose.model("Student", new mongoos
     issuedAt: { type: Date, default: Date.now }
   }]
 }, { timestamps: true }));
+
+const UniversityCertificate = mongoose.models.UniversityCertificate || mongoose.model("UniversityCertificate", new mongoose.Schema({
+  universityWallet: { type: String, required: true, lowercase: true, index: true },
+  certificateId: { type: String, required: true, unique: true, lowercase: true },
+  certificateNumber: { type: String, required: true },
+  universityName: { type: String, required: true },
+  studentEmail: { type: String, required: true, lowercase: true },
+  recipientWallet: { type: String, default: "" },
+  documentUrl: { type: String, default: "" },
+  verificationUrl: { type: String, default: "" },
+  transactionHash: { type: String, default: "" },
+  issuedAt: { type: Date, default: Date.now }
+}, { timestamps: true }));
+
 function createStudentToken(student) {
   if (!process.env.JWT_SECRET) throw new Error("Student authentication is not configured. Add JWT_SECRET to the backend environment.");
   return jwt.sign({ sub: String(student._id), email: student.email, role: "student" }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -103,7 +154,7 @@ const emailLimiter = rateLimit({
 
 
 app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
-  const { email, universityName, certificateNumber, certificateId, verificationUrl, documentUrl, transactionHash } = req.body || {};
+  const { email, universityName, certificateNumber, certificateId, verificationUrl, documentUrl, transactionHash, universityWallet, recipientWallet } = req.body || {};
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return res.status(400).json({ error: "A valid student email address is required." });
   if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.SMTP_FROM) return res.status(503).json({ error: "Email service is not configured. Add Gmail SMTP environment variables." });
@@ -143,6 +194,10 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
     return res.status(503).json({ error: (error.message.includes("MONGO_URI") || error.message.includes("MONGODB_URI")) ? error.message : "Student account service is temporarily unavailable." });
   }
 
+  if (typeof universityWallet !== "string" || !/^0x[0-9a-f]{40}$/i.test(universityWallet)) return res.status(400).json({ error: "University wallet is missing or invalid." });
+  try {
+    await UniversityCertificate.updateOne({ certificateId: certificateId.toLowerCase() }, { $setOnInsert: { universityWallet, certificateId, certificateNumber, universityName, studentEmail: normalizedEmail, recipientWallet: typeof recipientWallet === "string" ? recipientWallet : "", documentUrl: typeof documentUrl === "string" ? documentUrl : "", verificationUrl, transactionHash: typeof transactionHash === "string" ? transactionHash : "", issuedAt: new Date() } }, { upsert: true });
+  } catch (error) { console.error("University history save failed:", error.message); }
   const safeUniversity = escapeHtml(universityName);
   const safeNumber = escapeHtml(certificateNumber);
   const safeId = escapeHtml(certificateId);
@@ -156,11 +211,13 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
     ? `Student portal email: ${normalizedEmail}\\nTemporary password: ${temporaryPassword}\\nKeep this password private.`
     : "Your student portal account already exists. Use your existing password to sign in.";
   try {
+    const pdfBytes = await buildCertificatePdf({ documentUrl, verificationUrl, certificateNumber, universityName });
     const info = await sendEmail({
       to: normalizedEmail,
       subject: `Your certificate from ${universityName}`,
       text: ["Your academic certificate has been issued successfully.", `Institution: ${universityName}`, `Certificate number: ${certificateNumber}`, `Certificate ID: ${certificateId}`, `Verify certificate: ${verificationUrl}`, passwordText, safeDocumentUrl ? `Download certificate: ${documentUrl}` : "", safeTx ? `Blockchain transaction: https://sepolia.etherscan.io/tx/${transactionHash}` : ""].filter(Boolean).join("\n\n"),
-      html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;color:#172033"><h2>Your certificate is ready</h2><p>Your academic certificate has been issued successfully and recorded on the blockchain.</p><p><strong>Institution:</strong> ${safeUniversity}<br/><strong>Certificate number:</strong> ${safeNumber}</p><p style="word-break:break-all"><strong>Certificate ID:</strong> ${safeId}</p><p><a href="${safeVerifyUrl}">Verify certificate</a></p>${passwordHtml}${safeDocumentUrl ? `<p><a href="${safeDocumentUrl}">Download original certificate</a></p>` : ""}${safeTx ? `<p><a href="https://sepolia.etherscan.io/tx/${safeTx}">View blockchain transaction</a></p>` : ""}</div>`
+      html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;color:#172033"><h2>Your certificate is ready</h2><p>Your academic certificate has been issued successfully and recorded on the blockchain.</p><p><strong>Institution:</strong> ${safeUniversity}<br/><strong>Certificate number:</strong> ${safeNumber}</p><p style="word-break:break-all"><strong>Certificate ID:</strong> ${safeId}</p><p><a href="${safeVerifyUrl}">Verify certificate</a></p>${passwordHtml}<p>Your certificate PDF is attached. Scan its QR code to open the public verification page.</p></div>`,
+      attachments: [{ filename: `CertiChain-${String(certificateNumber).replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`, content: pdfBytes, contentType: "application/pdf" }]
     });
     return res.status(200).json({ sent: true, id: info.messageId, studentAccountCreated: Boolean(temporaryPassword) });
   } catch (error) {
@@ -201,6 +258,22 @@ app.post("/api/student/login", studentAuthLimiter, async (req, res) => {
     return res.status(503).json({ error: "Student login is temporarily unavailable. Please try again." });
   }
 });
+
+app.get("/api/university/history", async (req, res) => {
+  const wallet = typeof req.query.wallet === "string" ? req.query.wallet.trim().toLowerCase() : "";
+  if (!/^0x[a-f0-9]{40}$/.test(wallet)) return res.status(400).json({ error: "A valid university wallet address is required." });
+  try {
+    await connectMongo();
+    const certificates = await UniversityCertificate.find({ universityWallet: wallet })
+      .select("certificateId certificateNumber universityName recipientWallet documentUrl verificationUrl transactionHash issuedAt")
+      .sort({ issuedAt: -1 }).limit(500).lean();
+    return res.json({ certificates });
+  } catch (error) {
+    console.error("University certificate history failed:", error.message);
+    return res.status(503).json({ error: "Certificate history is temporarily unavailable." });
+  }
+});
+
 app.get("/api/student/certificates", requireStudent, async (req, res) => {
   res.json({ email: req.student.email, certificates: req.student.certificates });
 });
