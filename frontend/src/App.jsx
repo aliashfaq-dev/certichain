@@ -52,6 +52,9 @@ export default function App() {
   const [shareUrl,setShareUrl] = useState("");
   const [studentCertificates,setStudentCertificates] = useState([]);
   const [publicWalletLookup,setPublicWalletLookup] = useState("");
+  const [universityTab,setUniversityTab] = useState("issue");
+  const [universityHistory,setUniversityHistory] = useState([]);
+  const [historySort,setHistorySort] = useState("newest");
   const [emailCertificates,setEmailCertificates] = useState([]);
   const [studentEmail,setStudentEmail] = useState("");
   const [studentPassword,setStudentPassword] = useState("");
@@ -119,6 +122,7 @@ export default function App() {
       const university=await contract.getUniversity(account);
       const profile={universityId:university.universityId,name:university.name,active:university.active};
       setUniversityProfile(profile);
+      if (profile.active) await loadUniversityHistory(account);
       if (!profile.active) {
         setNotice("Access denied: this university wallet is not registered or has been deactivated.");
         return false;
@@ -201,7 +205,7 @@ export default function App() {
       await verify(id);
       const verificationUrl=new URL(window.location.href);
       verificationUrl.searchParams.set("cert",id);
-      verificationUrl.searchParams.set("contract",contractAddress);
+      verificationUrl.searchParams.delete("contract");
       try {
         const emailResponse=await fetch(`${API_URL.replace(/\/$/,"")}/api/email/certificate-issued`,{
           method:"POST",
@@ -213,14 +217,18 @@ export default function App() {
             certificateId:id,
             verificationUrl:verificationUrl.toString(),
             documentUrl:ipfsUrl(uploadData.cid),
-            transactionHash:tx.hash
+            transactionHash:tx.hash,
+             universityWallet:account,
+             recipientWallet:recipientAddress,
+             documentMimeType:file.type
           })
         });
         const emailData=await emailResponse.json().catch(()=>({}));
         if (!emailResponse.ok) {
           setNotice(`Certificate was issued on the blockchain, but the email could not be sent: ${emailData.error || "Check the email service configuration."}`);
         } else {
-          setNotice("Certificate issued successfully. The student has been emailed the verification link and portal login details.");
+          await loadUniversityHistory(account);
+          setNotice("Certificate issued and email sent with the PDF verification copy.");
         }
       } catch(emailError) {
         setNotice(`Certificate was issued on the blockchain, but the email service could not be reached: ${emailError.message}`);
@@ -229,6 +237,16 @@ export default function App() {
     finally { setBusy(false); }
   }
 
+  async function loadUniversityHistory(account=wallet) {
+    if (!isAddress(account)) return;
+    try {
+      const url=API_URL.replace(/\/$/,"")+"/api/university/history?wallet="+encodeURIComponent(account);
+      const response=await fetch(url);
+      const payload=await response.json().catch(()=>({}));
+      if (!response.ok) throw new Error(payload.error || "Could not load certificate history.");
+      setUniversityHistory(payload.certificates || []);
+    } catch(error) { setNotice(error.message || "Could not load certificate history."); }
+  }
   async function loadEmailCertificates(token=studentToken) {
     if (!token) return;
     const response=await fetch(API_URL.replace(/\/$/,"")+"/api/student/certificates",{headers:{Authorization:"Bearer "+token}});
@@ -248,7 +266,7 @@ export default function App() {
       }
       records.push(record);
     }
-    setEmailCertificates(records.reverse());
+    setEmailCertificates(records.sort((a,b)=>new Date(b.issuedAt)-new Date(a.issuedAt)));
     if(records.some(record=>record.chainStatus==="Pending check")) setNotice("Your saved certificates are shown. Blockchain status could not be refreshed right now; try again shortly.");
   }
 
@@ -392,7 +410,7 @@ export default function App() {
   },[]);
 
   const navItems=[["verify","Public verification"],["student","Student portal"],["admin","Admin portal"]];
-  const openStudent=async()=>{setPage("student");if(wallet) await loadStudentCertificates(wallet)};
+  const openStudent=async()=>{setPage("student")};
   const openAdmin=async()=>{setPage("admin");if(wallet) await checkAdmin(wallet)};
   const copyShare=async(url)=>{try{await navigator.clipboard.writeText(url);setNotice("Share link copied.")}catch{setNotice("Browser clipboard permission was not granted.")}};
 
@@ -402,7 +420,7 @@ export default function App() {
       <div className="nav-actions">
         <span className="network"><i/> {networkName}</span>
         <button className="button button-theme" onClick={()=>setTheme(t=>t==="light"?"dark":"light")}>{theme==="light"?"☾ Dark":"☀ Light"}</button>
-        <button className="button button-outline" onClick={connectWallet}>{page==="student"?"":wallet?short(wallet):"Connect wallet"}</button>
+        {page!=="student" && <button className="button button-outline" onClick={connectWallet}>{wallet?short(wallet):"Connect wallet"}</button>}
       </div>
     </nav>
     <div className="portal-nav" role="navigation" aria-label="Main sections">
@@ -436,11 +454,11 @@ export default function App() {
     </>}
 
     {page==="student" && <>
-      <section className="hero portal-hero"><div className="eyebrow">STUDENT SPACE</div><h1>Your achievements.<br/><em>Always verifiable.</em></h1><p>Sign in with your email to access certificates, or use a public wallet address to check on-chain credentials.</p></section>
+      <section className="hero portal-hero"><div className="eyebrow">STUDENT PORTAL</div><h1>Your certificates.</h1></section>
       <section className="workspace"><div className="panel">
-        <div className="panel-heading"><div><div className="eyebrow">MY CREDENTIALS</div><h2>My certificates</h2><p>Sign in with your email and password to view your certificates.</p></div><div className="panel-icon">▤</div></div>
+        <div className="panel-heading"><div><h2>My certificates</h2></div><div className="panel-icon">▤</div></div>
         <div className="student-login">
-          <h3>Student email login</h3>
+          <h3>Sign in</h3>
           {studentToken ? <div className="student-wallet"><span>Signed in as</span><strong>{studentAccountEmail}</strong><button className="button button-outline" onClick={()=>loadEmailCertificates()} disabled={busy}>Refresh certificates</button><button className="button button-outline" onClick={logoutStudent}>Sign out</button></div> : <form onSubmit={loginStudent}>
             <label htmlFor="student-email">Email address</label><input id="student-email" type="email" value={studentEmail} onChange={e=>setStudentEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" required/>
             <label htmlFor="student-password">Password</label><input id="student-password" type="password" value={studentPassword} onChange={e=>setStudentPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" required/>
@@ -458,7 +476,7 @@ export default function App() {
           </div>}
         </div>
         <div className="student-wallet-actions">
-          <h3>Public wallet lookup</h3><p>Enter a public address to check certificates without connecting a wallet.</p>
+          <h3>Search by public wallet</h3><p>Optional · No wallet connection required</p>
           <input aria-label="Public wallet address" value={publicWalletLookup} onChange={e=>setPublicWalletLookup(e.target.value)} placeholder="0x wallet address"/>
           <button className="button button-outline" onClick={()=>loadStudentCertificates(publicWalletLookup)} disabled={busy || !isAddress(publicWalletLookup)}>Find certificates</button>
         </div>
@@ -474,9 +492,9 @@ export default function App() {
     </>}
 
     {page==="admin" && <>
-      <section className="hero portal-hero"><div className="eyebrow">INSTITUTION CONTROL CENTER</div><h1>Admin portal.<br/><em>Issue with authority.</em></h1><p>The platform owner authorizes universities. Each institution issues and revokes its own credentials, with every transaction recorded on-chain.</p></section>
+      <section className="hero portal-hero"><div className="eyebrow">ISSUER PORTAL</div><h1>University dashboard.</h1></section>
       <section className="workspace"><div className="panel">
-        <div className="panel-heading"><div><div className="eyebrow">INSTITUTION CONTROL CENTER</div><h2>University & issuer management</h2><p>Platform owner authorizes institutions. Each authorized university wallet pays its own issuance gas fees.</p></div><div className="panel-icon">⌑</div></div>
+        <div className="panel-heading"><div><div className="eyebrow">DASHBOARD</div><h2>Manage institutions</h2></div><div className="panel-icon">⌑</div></div>
         {!wallet ? <button className="button button-primary" onClick={connectWallet}>Connect university / platform wallet</button> : owner.toLowerCase()===wallet.toLowerCase() ? <>
           <div className="admin-authorized"><span>PLATFORM OWNER ACCESS</span><strong>{short(wallet)}</strong></div>
           <form onSubmit={registerUniversity}>
@@ -494,19 +512,18 @@ export default function App() {
           </form>
           <div className="admin-security-note">Only the platform owner can authorize or deactivate university wallets. This wallet does not issue university certificates unless separately registered as an issuer.</div>
         </> : universityProfile?.active ? <>
-          <div className="admin-authorized"><span>UNIVERSITY ISSUER AUTHORIZED</span><strong>{universityProfile.name} · {short(universityProfile.universityId)}</strong><small>{short(wallet)}</small></div>
-          <form onSubmit={issue}>
-            <label htmlFor="contract-admin">Smart contract address</label><input id="contract-admin" value={contractAddress} onChange={e=>setContractAddress(e.target.value)} placeholder="0x contract address"/>
-            <label htmlFor="cert-number">Certificate number (unique within your university)</label><input id="cert-number" value={certificateNumber} onChange={e=>setCertificateNumber(e.target.value)} placeholder="e.g. 2026-CS-0001" required/>
-            <label htmlFor="recipient-email">Student email address <span className="required-mark">REQUIRED</span></label><input id="recipient-email" type="email" value={recipientEmail} onChange={e=>setRecipientEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" required/>
-            <label htmlFor="recipient">Student wallet address <span className="optional-mark">OPTIONAL</span></label><input id="recipient" value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="0x student wallet (optional)"/>
-            <p className="file-note">If the student does not have a wallet, leave this field blank. A private recipient reference will be generated automatically.</p>
-            <label htmlFor="document">Certificate document (PDF, PNG or JPG · max 10 MB)</label><input id="document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={e=>setFile(e.target.files?.[0]||null)} required/>
-            {file && <p className="file-note">Selected: {file.name} · {(file.size/1024/1024).toFixed(2)} MB</p>}
-            <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Processing…":"Upload & issue certificate"}</button>
-          </form>
-          <div className="admin-security-note">Your university wallet pays the gas fee for each issue/revoke transaction. Certificate IDs are namespaced by your unique university ID.</div>
-        </> : <div className="access-denied"><strong>Access restricted</strong><p>This wallet is not an active registered university issuer or the platform owner.</p><button className="button button-outline" onClick={()=>checkAdmin(wallet)}>Check authorization again</button></div>}
+          <div className="admin-authorized"><span>UNIVERSITY ISSUER</span><strong>{universityProfile.name}</strong></div>
+          <div className="tabs university-tabs"><button type="button" className={universityTab==="issue"?"active":""} onClick={()=>setUniversityTab("issue")}>Issue certificate</button><button type="button" className={universityTab==="history"?"active":""} onClick={()=>{setUniversityTab("history");loadUniversityHistory(wallet)}}>Certificate history</button></div>
+          {universityTab==="issue" && <form onSubmit={issue}>
+            <label htmlFor="cert-number">Certificate number</label><input id="cert-number" value={certificateNumber} onChange={e=>setCertificateNumber(e.target.value)} placeholder="e.g. 2026-CS-0001" required/>
+            <label htmlFor="recipient-email">Student email</label><input id="recipient-email" type="email" value={recipientEmail} onChange={e=>setRecipientEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" required/>
+            <label htmlFor="recipient">Student wallet <span className="optional-mark">OPTIONAL</span></label><input id="recipient" value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="0x…"/>
+            <label htmlFor="document">Certificate file</label><input id="document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={e=>setFile(e.target.files?.[0]||null)} required/>
+            {file && <p className="file-note">{file.name} · {(file.size/1024/1024).toFixed(2)} MB</p>}
+            <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Processing…":"Issue certificate"}</button>
+          </form>}
+          {universityTab==="history" && <section className="university-history"><div className="history-toolbar"><h3>Issued certificates <span>{universityHistory.length}</span></h3><select aria-label="Sort certificate history" value={historySort} onChange={e=>setHistorySort(e.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="number-asc">Certificate number A–Z</option><option value="number-desc">Certificate number Z–A</option></select></div>
+            {universityHistory.length ? [...universityHistory].sort((a,b)=>{if(historySort==="oldest") return new Date(a.issuedAt)-new Date(b.issuedAt);if(historySort==="number-asc") return String(a.certificateNumber).localeCompare(String(b.certificateNumber),undefined,{numeric:true});if(historySort==="number-desc") return String(b.certificateNumber).localeCompare(String(a.certificateNumber),undefined,{numeric:true});return new Date(b.issuedAt)-new Date(a.issuedAt);}).map(cert=><article className="history-item" key={cert.certificateId}><div><strong>{cert.certificateNumber}</strong><small>{cert.issuedAt?new Date(cert.issuedAt).toLocaleString():""}</small></div><div className="history-actions"><a href={cert.documentUrl} target="_blank" rel="noreferrer">Document</a><a href={cert.verificationUrl} target="_blank" rel="noreferrer">Verify</a></div></article>) : <div className="empty-state">No certificates issued yet.</div>}</section>}        </> : <div className="access-denied"><strong>Access restricted</strong><p>This wallet is not an active registered university issuer or the platform owner.</p><button className="button button-outline" onClick={()=>checkAdmin(wallet)}>Check authorization again</button></div>}
       </div></section>
     </>}
 
