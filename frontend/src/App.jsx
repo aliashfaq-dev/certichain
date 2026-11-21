@@ -251,6 +251,17 @@ export default function App() {
     if(records.some(record=>record.chainStatus==="Pending check")) setNotice("Your saved certificates are shown. Blockchain status could not be refreshed right now; try again shortly.");
   }
 
+  async function resendStudentPassword() {
+    if (!studentEmail.trim()) { setNotice("Enter your student email address first."); return; }
+    setBusy(true); setNotice("");
+    try {
+      const response=await fetch(API_URL.replace(/\\/$/,"")+"/api/student/resend-password",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:studentEmail.trim().toLowerCase()})});
+      const payload=await response.json().catch(()=>({}));
+      if (!response.ok) throw new Error(payload.error || "Could not send a password email.");
+      setNotice(payload.message || "If your account exists, a new password has been emailed.");
+    } catch(error) { setNotice(error.message || "Could not send a password email."); }
+    finally { setBusy(false); }
+  }
   async function loginStudent(event) {
     event.preventDefault(); setBusy(true); setNotice("");
     try {
@@ -433,6 +444,7 @@ export default function App() {
             <label htmlFor="student-email">Email address</label><input id="student-email" type="email" value={studentEmail} onChange={e=>setStudentEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" required/>
             <label htmlFor="student-password">Password</label><input id="student-password" type="password" value={studentPassword} onChange={e=>setStudentPassword(e.target.value)} placeholder="Enter your password" autoComplete="current-password" required/>
             <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Signing in…":"Sign in to student portal"}</button>
+            <button className="button button-outline button-wide" type="button" onClick={resendStudentPassword} disabled={busy}>Forgot password? Resend password</button>
           </form>}
           {studentToken && <div className="certificate-list">
             {emailCertificates.map(cert=><article className="student-cert" key={cert.certificateId}>
