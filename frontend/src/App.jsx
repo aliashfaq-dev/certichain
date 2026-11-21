@@ -58,7 +58,7 @@ export default function App() {
   const [studentAccountEmail,setStudentAccountEmail] = useState(() => sessionStorage.getItem("certichain-student-email") || "");
   const [busy,setBusy] = useState(false);
   const [notice,setNotice] = useState("");
-  const readProvider = useMemo(() => RPC_URL ? new JsonRpcProvider(RPC_URL) : null, []);
+  const readProvider = useMemo(() => RPC_URL ? new JsonRpcProvider(RPC_URL, undefined, { batchMaxCount: 1 }) : null, []);
   const isConfigured = /^0x[0-9a-fA-F]{40}$/.test(contractAddress);
   const networkName = CHAIN_ID===11155111 ? "Sepolia Testnet" : CHAIN_ID===1 ? "Ethereum Mainnet" : `Chain ${CHAIN_ID}`;
   const contractUrl = `${EXPLORER}/address/${contractAddress}`;
@@ -235,13 +235,20 @@ export default function App() {
     if (!response.ok) throw new Error(payload.error || "Could not load student certificates.");
     const contract=getReadContract();
     const records=[];
-    // Avoid simultaneous RPC calls that can trigger provider coalescing errors.
+    // Keep saved certificates visible if the public RPC temporarily fails.
     for(const item of (payload.certificates||[])) {
-      const cert=await contract.getCertificate(item.certificateId);
-      const university=await contract.getUniversity(cert.issuer);
-      records.push({certificateId:item.certificateId,universityId:cert.universityId,universityName:university.name||item.universityName,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked});
+      let record={certificateId:item.certificateId,universityName:item.universityName,verificationUrl:item.verificationUrl,documentUrl:item.documentUrl,issuedAt:item.issuedAt?new Date(item.issuedAt).toLocaleString():"",revoked:false,chainStatus:"Pending check"};
+      try {
+        const cert=await contract.getCertificate(item.certificateId);
+        const university=await contract.getUniversity(cert.issuer);
+        record={...record,universityId:cert.universityId,universityName:university.name||item.universityName,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked,chainStatus:"Verified on-chain"};
+      } catch(error) {
+        console.warn("Could not refresh on-chain status for certificate", item.certificateId, error);
+      }
+      records.push(record);
     }
     setEmailCertificates(records.reverse());
+    if(records.some(record=>record.chainStatus==="Pending check")) setNotice("Your saved certificates are shown. Blockchain status could not be refreshed right now; try again shortly.");
   }
 
   async function loginStudent(event) {
