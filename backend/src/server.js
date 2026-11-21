@@ -248,7 +248,7 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
     ? `<div style="margin:22px 0;padding:18px;background:#f1f5ff;border:1px solid #dbe4ff;border-radius:10px"><strong>Student portal login</strong><p style="margin:10px 0 4px">Email: ${escapeHtml(normalizedEmail)}</p><p style="margin:4px 0">Temporary password: <strong style="font-family:monospace">${escapeHtml(temporaryPassword)}</strong></p><p style="font-size:12px;color:#536078">Keep this password private. You can use it to access all certificates linked to this email.</p></div>`
     : `<p>Your student portal account already exists. Sign in using your existing password and this email address.</p>`;
   const passwordText = temporaryPassword
-    ? `Student portal email: ${normalizedEmail}\\nTemporary password: ${temporaryPassword}\\nKeep this password private.`
+    ? `Student portal email: ${normalizedEmail}\nTemporary password: ${temporaryPassword}\nKeep this password private.`
     : "Your student portal account already exists. Use your existing password to sign in.";
   try {
     const pdfBytes = await buildCertificatePdf({ documentUrl, documentMimeType, verificationUrl, certificateNumber, universityName });
@@ -330,13 +330,13 @@ app.post("/api/university/auth/challenge", universityAuthLimiter, async (req,res
 });
 app.post("/api/university/auth/register", universityAuthLimiter, async (req,res)=>{
  const email=String(req.body?.email||"").trim().toLowerCase(), password=String(req.body?.password||""), universityName=String(req.body?.universityName||"").trim(), universityCode=String(req.body?.universityCode||"").trim().toUpperCase(), wallet=String(req.body?.wallet||"").toLowerCase(), signature=String(req.body?.signature||""), nonce=String(req.body?.nonce||"");
- if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||password.length<10||!universityName||!/^[A-Z0-9-]{2,16}$/.test(universityCode)||!/^0x[a-f0-9]{40}$/.test(wallet)||!signature||!nonce) return res.status(400).json({error:"Complete all fields, use a valid university email and a password of at least 10 characters."});
+ if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<10||!universityName||!/^[A-Z0-9-]{2,16}$/.test(universityCode)||!/^0x[a-f0-9]{40}$/.test(wallet)||!signature||!nonce) return res.status(400).json({error:"Complete all fields, use a valid university email and a password of at least 10 characters."});
  try {
   await connectMongo();
   const challenge=await UniversityNonce.findOne({wallet});
   if(!challenge||challenge.nonce!==nonce||challenge.expiresAt<Date.now()) return res.status(400).json({error:"Wallet verification expired. Request a new challenge."});
   const {verifyMessage}=await import("ethers");
-  const message="CertiChain University Account Registration\\nWallet: "+wallet+"\\nEmail: "+email+"\\nNonce: "+nonce;
+  const message="CertiChain University Account Registration\nWallet: "+wallet+"\nEmail: "+email+"\nNonce: "+nonce;
   if(verifyMessage(message,signature).toLowerCase()!==wallet) return res.status(401).json({error:"Wallet signature does not match the university wallet."});
   if(await UniversityAccount.findOne({$or:[{email},{wallet}]})) return res.status(409).json({error:"An account already exists for this email or wallet."});
   const token=crypto.randomBytes(32).toString("hex"), account=new UniversityAccount({email,passwordHash:await bcrypt.hash(password,12),universityName,universityCode,wallet,emailVerificationHash:crypto.createHash("sha256").update(token).digest("hex"),emailVerificationExpires:new Date(Date.now()+30*60*1000)});
