@@ -271,12 +271,25 @@ export default function App() {
       const filter=contract.filters.CertificateIssued(null,null,account);
       const latest=await readProvider.getBlockNumber();
       const events=[];
-      // Avoid oversized eth_getLogs requests: some RPCs return a generic
-      // "could not coalesce error" when asked for the entire chain at once.
-      const chunkSize=10000;
-      for(let toBlock=latest;toBlock>=0;toBlock-=chunkSize) {
-        const fromBlock=Math.max(0,toBlock-chunkSize+1);
-        const chunk=await contract.queryFilter(filter,fromBlock,toBlock);
+      // This contract was deployed on Sepolia at block 12175745.
+      // Scan only this contract's lifetime, in small ranges; adaptively shrink
+      // the range if the configured RPC rejects a getLogs request.
+      const deploymentBlock=Math.max(0, Number(import.meta.env.VITE_CONTRACT_START_BLOCK || 12175745));
+      let toBlock=latest;
+      while(toBlock>=deploymentBlock) {
+        let span=2000;
+        let chunk;
+        while(true) {
+          const fromBlock=Math.max(deploymentBlock,toBlock-span+1);
+          try {
+            chunk=await contract.queryFilter(filter,fromBlock,toBlock);
+            toBlock=fromBlock-1;
+            break;
+          } catch(error) {
+            if(span<=100) throw error;
+            span=Math.max(100,Math.floor(span/2));
+          }
+        }
         events.push(...chunk);
       }
       const records=[];
