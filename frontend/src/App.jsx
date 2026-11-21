@@ -141,7 +141,7 @@ export default function App() {
         cert=await contract.getCertificate(certificateId);
       } catch {
         setNotice("Searching blockchain records…");
-        const latest=await readProvider.getBlockNumber(); let match=null; for(let toBlock=latest;toBlock>=0;toBlock-=10000){const fromBlock=Math.max(0,toBlock-9999);const events=await contract.queryFilter(contract.filters.CertificateIssued(),fromBlock,toBlock);match=events.find(event=>String(event.args.documentHash).toLowerCase()===certificateId.toLowerCase());if(match) break;}
+        const latest=await readProvider.getBlockNumber(); let match=null; const deploymentBlock=Math.max(0,Number(import.meta.env.VITE_CONTRACT_START_BLOCK || 12175745)); for(let toBlock=latest;toBlock>=deploymentBlock;){const fromBlock=Math.max(deploymentBlock,toBlock-499);const events=await contract.queryFilter(contract.filters.CertificateIssued(),fromBlock,toBlock);match=events.find(event=>String(event.args.documentHash).toLowerCase()===certificateId.toLowerCase());if(match) break;toBlock=fromBlock-1;}
         if (!match) throw new Error("No certificate was found for this hash. Check the certificate ID or document hash.");
         certificateId=match.args.certificateId;
         cert=await contract.getCertificate(certificateId);
@@ -150,7 +150,7 @@ export default function App() {
       const university=await contract.getUniversity(cert.issuer);
       const data={certificateId,universityId:cert.universityId,universityName:university.name,status:valid?"VALID":"REVOKED",recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
       setResult(data);
-      const url=new URL(window.location.href); url.searchParams.set("cert",certificateId); url.searchParams.set("contract",contractAddress);
+      const url=new URL(window.location.href); url.searchParams.set("cert",certificateId); url.searchParams.delete("contract");
       setShareUrl(url.toString());
       setQr(await QRCode.toDataURL(url.toString(),{width:240,margin:2}));
       setLookupId(certificateId);
@@ -401,7 +401,7 @@ export default function App() {
       <div className="nav-actions">
         <span className="network"><i/> {networkName}</span>
         <button className="button button-theme" onClick={()=>setTheme(t=>t==="light"?"dark":"light")}>{theme==="light"?"☾ Dark":"☀ Light"}</button>
-        <button className="button button-outline" onClick={connectWallet}>{wallet?short(wallet):"Connect wallet"}</button>
+        <button className="button button-outline" onClick={connectWallet}>{page==="student"?"":wallet?short(wallet):"Connect wallet"}</button>
       </div>
     </nav>
     <div className="portal-nav" role="navigation" aria-label="Main sections">
@@ -418,15 +418,15 @@ export default function App() {
       <section className="workspace">
         <div className="panel">
           <div className="panel-heading"><div><div className="eyebrow">PUBLIC VERIFICATION</div><h2>Check a certificate</h2><p>Paste the certificate ID or SHA-256 document hash provided by the student or institution.</p></div><div className="panel-icon">✓</div></div>
-          <label htmlFor="contract">Smart contract address</label><input id="contract" value={contractAddress} onChange={e=>setContractAddress(e.target.value)} placeholder="0x contract address"/>
+          
           <label htmlFor="certificate">Certificate ID / Document hash</label>
           <div className="input-row"><input id="certificate" value={lookupId} onChange={e=>setLookupId(e.target.value)} placeholder="0x + 64 hexadecimal characters"/><button className="button button-primary" onClick={()=>verify()} disabled={busy}>{busy?"Checking…":"Verify certificate"}</button></div>
           {result && <div className="result-card">
             <div className="status-line"><span className={result.status==="VALID"?"status status-valid":"status status-revoked"}>{result.status==="VALID"?"✓ VALID CERTIFICATE":"✕ REVOKED CERTIFICATE"}</span><span className="muted">BLOCKCHAIN RECORD</span></div>
             <div className="details-grid"><div><small>Certificate ID</small><strong>{short(result.certificateId)}</strong></div><div><small>University</small><strong>{result.universityName || short(result.universityId)}</strong></div><div><small>University ID</small><strong>{short(result.universityId)}</strong></div><div><small>Recipient reference</small><strong>{short(result.recipient)}</strong></div><div><small>Issued by</small><strong>{short(result.issuer)}</strong></div><div><small>Issued at</small><strong>{result.issuedAt}</strong></div><div><small>Document SHA-256</small><strong>{short(result.documentHash)}</strong></div><div><small>Revocation status</small><strong>{result.revoked?"Revoked":"Not revoked"}</strong></div></div>
-            <div className="cid-row"><span>Issuer wallet</span><a href={`${EXPLORER}/address/${result.issuer}`} target="_blank" rel="noreferrer">{result.issuer} ↗</a></div>
+            
             <div className="cid-row"><span>IPFS certificate file</span><a href={ipfsUrl(result.ipfsCid)} target="_blank" rel="noreferrer">View / download document ↗</a></div>
-            <div className="cid-row"><span>Blockchain record</span><a href={`${EXPLORER}/address/${contractAddress}`} target="_blank" rel="noreferrer">View contract ↗</a></div>
+            
             {qr && <div className="qr-area"><img src={qr} alt="Certificate verification QR code"/><div><b>Share public verification</b><p>Share this secure link or QR code so anyone can independently verify the record.</p><button className="button button-outline" onClick={()=>copyShare(shareUrl)}>Copy verification link</button></div></div>}
             {wallet.toLowerCase()===result.issuer.toLowerCase() && !result.revoked && <button className="button button-danger" onClick={revoke} disabled={busy}>Revoke certificate</button>}
           </div>}
@@ -435,9 +435,9 @@ export default function App() {
     </>}
 
     {page==="student" && <>
-      <section className="hero portal-hero"><div className="eyebrow">STUDENT SPACE</div><h1>Your achievements.<br/><em>Always verifiable.</em></h1><p>Connect the wallet that received your certificates to see your credentials, download original files and share verification links.</p></section>
+      <section className="hero portal-hero"><div className="eyebrow">STUDENT SPACE</div><h1>Your achievements.<br/><em>Always verifiable.</em></h1><p>Sign in with your email to access certificates, or use a public wallet address to check on-chain credentials.</p></section>
       <section className="workspace"><div className="panel">
-        <div className="panel-heading"><div><div className="eyebrow">MY CREDENTIALS</div><h2>My certificates</h2><p>Sign in with your email or connect the wallet that received your certificates.</p></div><div className="panel-icon">▤</div></div>
+        <div className="panel-heading"><div><div className="eyebrow">MY CREDENTIALS</div><h2>My certificates</h2><p>Sign in with your email and password to view your certificates.</p></div><div className="panel-icon">▤</div></div>
         <div className="student-login">
           <h3>Student email login</h3>
           {studentToken ? <div className="student-wallet"><span>Signed in as</span><strong>{studentAccountEmail}</strong><button className="button button-outline" onClick={()=>loadEmailCertificates()} disabled={busy}>Refresh certificates</button><button className="button button-outline" onClick={logoutStudent}>Sign out</button></div> : <form onSubmit={loginStudent}>
