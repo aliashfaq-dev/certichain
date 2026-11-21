@@ -414,6 +414,16 @@ export default function App() {
       sessionStorage.setItem("certichain-university-token",data.token);setUniversityToken(data.token);setUniversityAccount(data.university);setUniversityTemplates(data.university.templates||[]);setProfileName(data.university.name);setProfileCode(data.university.code);setNotice("University signed in successfully.");
     }catch(error){setNotice(error.shortMessage||error.message||"University sign-in failed.");}finally{setBusy(false);}
   }
+  async function loadUniversityAccount(){
+    const response=await fetch(API_URL.replace(/\/$/,"")+"/api/university/account",{headers:{Authorization:"Bearer "+universityToken}});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok)throw new Error(data.error||"Could not load university account.");
+    const account=data.university;
+    setUniversityAccount({...account,email:data.email});
+    setUniversityTemplates(account.templates||[]);
+    setProfileName(account.name||"");
+    setProfileCode(account.code||"");
+  }
   async function saveUniversityProfile(e){e.preventDefault();try{const r=await fetch(API_URL.replace(/\/$/,"")+"/api/university/account",{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:"Bearer "+universityToken},body:JSON.stringify({universityName:profileName,universityCode:profileCode})});const d=await r.json();if(!r.ok)throw new Error(d.error);setUniversityAccount(d.university);setNotice("Profile updated.");}catch(e){setNotice(e.message);}}
   async function saveUniversityTemplate(e){e.preventDefault();if(!templateFile)return;setBusy(true);try{const form=new FormData();form.append("file",templateFile);const up=await fetch(API_URL.replace(/\/$/,"")+"/api/ipfs/upload",{method:"POST",body:form});const ud=await up.json();if(!up.ok)throw new Error(ud.error);const r=await fetch(API_URL.replace(/\/$/,"")+"/api/university/templates",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+universityToken},body:JSON.stringify({name:templateName,cid:ud.cid,mimeType:templateFile.type,active:universityTemplates.length===0})});const d=await r.json();if(!r.ok)throw new Error(d.error);setUniversityTemplates(d.templates);setTemplateName("");setTemplateFile(null);setNotice("Template uploaded and saved.");}catch(e){setNotice(e.message);}finally{setBusy(false);}}
   async function loadTemplateForIssuance(id){
