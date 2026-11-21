@@ -37,6 +37,8 @@ export default function App() {
   const [universityWalletInput,setUniversityWalletInput] = useState("");
   const [universityCodeInput,setUniversityCodeInput] = useState("");
   const [universityNameInput,setUniversityNameInput] = useState("");
+  const [ownerUniversityEmail,setOwnerUniversityEmail]=useState("");
+  const [ownerUniversityPassword,setOwnerUniversityPassword]=useState("");
   const [statusWalletInput,setStatusWalletInput] = useState("");
   const [statusActive,setStatusActive] = useState(false);
   const [contractAddress,setContractAddress] = useState(new URLSearchParams(window.location.search).get("contract") || CONTRACT_ADDRESS);
@@ -64,7 +66,7 @@ export default function App() {
   const [universityToken,setUniversityToken]=useState(()=>sessionStorage.getItem("certichain-university-token")||"");
   const [universityEmail,setUniversityEmail]=useState("");
   const [universityPassword,setUniversityPassword]=useState("");
-  const [universityRegisterMode,setUniversityRegisterMode]=useState(false);
+
   const [universityAccount,setUniversityAccount]=useState(null);
   const [universityTemplates,setUniversityTemplates]=useState([]);
   const [templateName,setTemplateName]=useState("");
@@ -374,11 +376,19 @@ export default function App() {
       if (!isAddress(universityWalletInput)) throw new Error("Enter a valid university wallet address.");
       if (!universityCodeInput.trim() || !universityNameInput.trim()) throw new Error("Both university code and name are required.");
       const universityId=keccak256(toUtf8Bytes(universityCodeInput.trim().toUpperCase()));
+      const email=ownerUniversityEmail.trim().toLowerCase();
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter the university's official email address.");
+      if(ownerUniversityPassword.length<10) throw new Error("Set an initial password of at least 10 characters.");
       const tx=await contract.registerUniversity(universityWalletInput,universityId,universityNameInput.trim());
-      setNotice(`University registration submitted: ${tx.hash}. Waiting for confirmation…`);
+      setNotice(`University authorization submitted: ${tx.hash}. Waiting for confirmation…`);
       await tx.wait();
-      setUniversityWalletInput(""); setUniversityCodeInput(""); setUniversityNameInput("");
-      setNotice("University authorized successfully. It can now issue certificates from its wallet.");
+      const message="CertiChain Owner Creates University Account\nWallet: "+universityWalletInput.toLowerCase()+"\nEmail: "+email+"\nUniversity: "+universityNameInput.trim()+"\nCode: "+universityCodeInput.trim().toUpperCase();
+      const signature=await signer.signMessage(message);
+      const response=await fetch(API_URL.replace(/\/$/,"")+"/api/admin/university-account",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({wallet:universityWalletInput,email,password:ownerUniversityPassword,universityName:universityNameInput.trim(),universityCode:universityCodeInput.trim().toUpperCase(),signature})});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok) throw new Error("University was authorized on-chain, but account setup failed: "+(data.error||"Please retry account setup."));
+      setUniversityWalletInput("");setUniversityCodeInput("");setUniversityNameInput("");setOwnerUniversityEmail("");setOwnerUniversityPassword("");
+      setNotice("University authorized. Its login credentials were sent to the official university email.");
     } catch(error) { setNotice(error.shortMessage || error.reason || error.message || "University registration failed."); }
     finally { setBusy(false); }
   }
@@ -386,22 +396,12 @@ export default function App() {
   async function universityAuth(event){
     event.preventDefault();setBusy(true);setNotice("");
     try{
-      const {account,signer}=await getWalletSigner();
-      if(universityRegisterMode){
-        const ch=await fetch(API_URL.replace(/\/$/,"")+"/api/university/auth/challenge",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({wallet:account})});
-        const challenge=await ch.json();if(!ch.ok)throw new Error(challenge.error);
-        const name=String(universityAccount?.name||"").trim(),code=String(universityAccount?.code||"").trim().toUpperCase();
-        const message="CertiChain University Account Registration\nWallet: "+account.toLowerCase()+"\nEmail: "+universityEmail.trim().toLowerCase()+"\nNonce: "+challenge.nonce;
-        const signature=await signer.signMessage(message);
-        const r=await fetch(API_URL.replace(/\/$/,"")+"/api/university/auth/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:universityEmail,password:universityPassword,universityName:name,universityCode:code,wallet:account,signature,nonce:challenge.nonce})});
-        const d=await r.json();if(!r.ok)throw new Error(d.error);setNotice("Verification email sent. Verify your university email before signing in.");
-      }else{
-        const r=await fetch(API_URL.replace(/\/$/,"")+"/api/university/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:universityEmail,password:universityPassword})});
-        const d=await r.json();if(!r.ok)throw new Error(d.error);
-        if(d.university.wallet.toLowerCase()!==account.toLowerCase())throw new Error("Connect the wallet registered to this university.");
-        sessionStorage.setItem("certichain-university-token",d.token);setUniversityToken(d.token);setUniversityAccount(d.university);setUniversityTemplates(d.university.templates||[]);setProfileName(d.university.name);setProfileCode(d.university.code);setNotice("University signed in.");
-      }
-    }catch(e){setNotice(e.shortMessage||e.message||"University authentication failed.");}finally{setBusy(false);}
+      const {account}=await getWalletSigner();
+      const response=await fetch(API_URL.replace(/\/$/,"")+"/api/university/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:universityEmail,password:universityPassword})});
+      const data=await response.json();if(!response.ok)throw new Error(data.error||"University login failed.");
+      if(data.university.wallet.toLowerCase()!==account.toLowerCase())throw new Error("Connect the wallet authorized for this university.");
+      sessionStorage.setItem("certichain-university-token",data.token);setUniversityToken(data.token);setUniversityAccount(data.university);setUniversityTemplates(data.university.templates||[]);setProfileName(data.university.name);setProfileCode(data.university.code);setNotice("University signed in successfully.");
+    }catch(error){setNotice(error.shortMessage||error.message||"University sign-in failed.");}finally{setBusy(false);}
   }
   async function saveUniversityProfile(e){e.preventDefault();try{const r=await fetch(API_URL.replace(/\/$/,"")+"/api/university/account",{method:"PATCH",headers:{"Content-Type":"application/json",Authorization:"Bearer "+universityToken},body:JSON.stringify({universityName:profileName,universityCode:profileCode})});const d=await r.json();if(!r.ok)throw new Error(d.error);setUniversityAccount(d.university);setNotice("Profile updated.");}catch(e){setNotice(e.message);}}
   async function saveUniversityTemplate(e){e.preventDefault();if(!templateFile)return;setBusy(true);try{const form=new FormData();form.append("file",templateFile);const up=await fetch(API_URL.replace(/\/$/,"")+"/api/ipfs/upload",{method:"POST",body:form});const ud=await up.json();if(!up.ok)throw new Error(ud.error);const r=await fetch(API_URL.replace(/\/$/,"")+"/api/university/templates",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+universityToken},body:JSON.stringify({name:templateName,cid:ud.cid,mimeType:templateFile.type,active:universityTemplates.length===0})});const d=await r.json();if(!r.ok)throw new Error(d.error);setUniversityTemplates(d.templates);setTemplateName("");setTemplateFile(null);setNotice("Template uploaded and saved.");}catch(e){setNotice(e.message);}finally{setBusy(false);}}
@@ -557,7 +557,9 @@ export default function App() {
             <label htmlFor="university-name">University name</label><input id="university-name" value={universityNameInput} onChange={e=>setUniversityNameInput(e.target.value)} placeholder="e.g. Example University" required/>
             <label htmlFor="university-code">Unique university code</label><input id="university-code" value={universityCodeInput} onChange={e=>setUniversityCodeInput(e.target.value)} placeholder="e.g. EXU" required/>
             <label htmlFor="university-wallet">University issuer wallet</label><input id="university-wallet" value={universityWalletInput} onChange={e=>setUniversityWalletInput(e.target.value)} placeholder="0x university wallet…" required/>
-            <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Processing…":"Authorize university"}</button>
+            <label htmlFor="owner-university-email">Official university email</label><input id="owner-university-email" type="email" value={ownerUniversityEmail} onChange={e=>setOwnerUniversityEmail(e.target.value)} placeholder="registrar@university.edu" required/>
+            <label htmlFor="owner-university-password">Initial university password</label><input id="owner-university-password" type="password" minLength={10} value={ownerUniversityPassword} onChange={e=>setOwnerUniversityPassword(e.target.value)} placeholder="At least 10 characters" required/>
+            <button className="button button-primary button-wide" type="submit" disabled={busy}>{busy?"Processing…":"Authorize & create university login"}</button>
           </form>
           <form onSubmit={changeUniversityStatus}>
             <h3>Activate / deactivate university</h3>
@@ -567,7 +569,7 @@ export default function App() {
           </form>
           <div className="admin-security-note">Only the platform owner can authorize or deactivate university wallets. This wallet does not issue university certificates unless separately registered as an issuer.</div>
         </> : universityProfile?.active ? <>
-          {!universityToken ? <div className="university-auth-card"><h3>{universityRegisterMode?"Register university account":"University sign in"}</h3><p>Connect the authorized university wallet and use your official email.</p><form onSubmit={universityAuth}><label>Official university email</label><input type="email" value={universityEmail} onChange={e=>setUniversityEmail(e.target.value)} required/><label>Password (minimum 10 characters)</label><input type="password" minLength={10} value={universityPassword} onChange={e=>setUniversityPassword(e.target.value)} required/>{universityRegisterMode&&<><label>University name</label><input value={universityAccount?.name||""} onChange={e=>setUniversityAccount(v=>({...v,name:e.target.value}))} required/><label>University code</label><input value={universityAccount?.code||""} onChange={e=>setUniversityAccount(v=>({...v,code:e.target.value.toUpperCase()}))} required/></>}<button className="button button-primary button-wide" disabled={busy}>{universityRegisterMode?"Create account":"Sign in"}</button></form><button className="button button-outline button-wide" onClick={()=>setUniversityRegisterMode(v=>!v)}>{universityRegisterMode?"Already registered? Sign in":"Create university account"}</button></div> : <>
+          {!universityToken ? <div className="university-auth-card"><h3>University sign in</h3><p>Your account is created and assigned by the CertiChain platform owner.</p><form onSubmit={universityAuth}><label>Official university email</label><input type="email" value={universityEmail} onChange={e=>setUniversityEmail(e.target.value)} autoComplete="username" required/><label>Password</label><input type="password" value={universityPassword} onChange={e=>setUniversityPassword(e.target.value)} autoComplete="current-password" required/><button className="button button-primary button-wide" disabled={busy}>Sign in</button></form></div> : <>
           <div className="admin-authorized"><span>UNIVERSITY ACCOUNT</span><strong>{universityAccount?.name||universityProfile.name}</strong><button className="button button-outline" onClick={logoutUniversity}>Sign out</button></div>
           <div className="tabs university-tabs"><button type="button" className={universityTab==="templates"?"active":""} onClick={()=>setUniversityTab("templates")}>Templates</button><button type="button" className={universityTab==="profile"?"active":""} onClick={()=>setUniversityTab("profile")}>Profile</button><button type="button" className={universityTab==="issue"?"active":""} onClick={()=>setUniversityTab("issue")}>Issue certificate</button><button type="button" className={universityTab==="history"?"active":""} onClick={()=>{setUniversityTab("history");loadUniversityHistory(wallet)}}>Certificate history</button></div>
           {universityTab==="templates"&&<div className="university-settings"><h3>Certificate templates</h3><p>Upload your blank certificate PDF/image with signatures already included.</p><form onSubmit={saveUniversityTemplate}><label>Template name</label><input value={templateName} onChange={e=>setTemplateName(e.target.value)} required placeholder="BS Computer Science"/><label>Blank certificate</label><input type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={e=>setTemplateFile(e.target.files?.[0]||null)} required/><button className="button button-primary" disabled={busy}>Upload template</button></form>{universityTemplates.map(t=><article className="history-item" key={t._id}><div><strong>{t.name}</strong><small>{t.active?"Active":"Available"}</small></div><div className="history-actions"><a href={t.url} target="_blank" rel="noreferrer">Preview</a>{!t.active&&<button className="button button-outline" onClick={()=>activateTemplate(t._id)}>Use this</button>}</div></article>)}</div>}
