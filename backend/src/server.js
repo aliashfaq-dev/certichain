@@ -191,7 +191,7 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
 const studentAuthLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 8, standardHeaders: "draft-8", legacyHeaders: false });
 app.post("/api/student/login", studentAuthLimiter, async (req, res) => {
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
-  const password = typeof req.body?.password === "string" ? req.body.password.trim() : "";
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
   if (!email || !password) return res.status(400).json({ error: "Email and password are required." });
   try {
     await connectMongo();
