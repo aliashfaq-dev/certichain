@@ -234,11 +234,13 @@ export default function App() {
     const payload=await response.json().catch(()=>({}));
     if (!response.ok) throw new Error(payload.error || "Could not load student certificates.");
     const contract=getReadContract();
-    const records=await Promise.all((payload.certificates||[]).map(async item=>{
+    const records=[];
+    // Avoid simultaneous RPC calls that can trigger provider coalescing errors.
+    for(const item of (payload.certificates||[])) {
       const cert=await contract.getCertificate(item.certificateId);
       const university=await contract.getUniversity(cert.issuer);
-      return {certificateId:item.certificateId,universityId:cert.universityId,universityName:university.name||item.universityName,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
-    }));
+      records.push({certificateId:item.certificateId,universityId:cert.universityId,universityName:university.name||item.universityName,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked});
+    }
     setEmailCertificates(records.reverse());
   }
 
