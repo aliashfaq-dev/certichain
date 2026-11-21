@@ -42,7 +42,8 @@ export default function App() {
   const [statusWalletInput,setStatusWalletInput] = useState("");
   const [statusActive,setStatusActive] = useState(false);
   const [contractAddress,setContractAddress] = useState(new URLSearchParams(window.location.search).get("contract") || CONTRACT_ADDRESS);
-  const [page,setPage] = useState("verify");
+  const routeToPage=()=>({"/student-portal":"student","/platform-control":"owner","/university-office":"university"}[window.location.pathname]||"verify");
+  const [page,setPage] = useState(routeToPage);
   const [theme,setTheme] = useState(() => localStorage.getItem("certichain-theme") || "light");
   const [certificateNumber,setCertificateNumber] = useState("");
   const [recipient,setRecipient] = useState("");
@@ -122,7 +123,7 @@ export default function App() {
     try {
       const {account}=await getWalletSigner();
       setNotice("Wallet connected: " + short(account));
-      if (page==="admin") await checkAdmin(account);
+      if (page==="owner") {const ok=await checkAdmin(account);if(!ok||owner.toLowerCase()!==account.toLowerCase())throw new Error("Only the platform owner wallet can access this page.");}
       if (page==="student") await loadStudentCertificates(account);
     } catch(error) { setNotice(error.shortMessage || error.message || "Wallet connection failed."); }
   }
@@ -189,6 +190,7 @@ export default function App() {
       const contract=new Contract(contractAddress,ABI,signer);
       const university=await contract.getUniversity(account);
       if (!university.active) throw new Error("This wallet has not been authorized as a university issuer by the platform owner.");
+      if(universityAccount?.wallet && universityAccount.wallet.toLowerCase()!==account.toLowerCase()) throw new Error("Connect the issuer wallet assigned to this university account.");
       const universityId=university.universityId;
       setUniversityProfile({universityId,name:university.name,active:university.active});
       if (!file) throw new Error("Please select a certificate PDF or image.");
@@ -207,7 +209,7 @@ export default function App() {
       // Do not derive it from the email: the email itself and any reversible identifier stay off-chain.
       const randomRecipientBytes=crypto.getRandomValues(new Uint8Array(20));
       const generatedRecipient="0x"+Array.from(randomRecipientBytes,byte=>byte.toString(16).padStart(2,"0")).join("");
-      const recipientAddress=recipient.trim() || generatedRecipient;
+      const recipientAddress=generatedRecipient;
       let certificateFile=file;
       if(selectedTemplateId){
         setNotice("Preparing signed university certificate and verification QR…");
@@ -232,7 +234,7 @@ export default function App() {
       setNotice(`Transaction submitted: ${tx.hash}. Waiting for transaction confirmation…`);
       await tx.wait();
       setCertificateNumber(""); setRecipient(""); setRecipientEmail(""); setFile(null); setStudentName(""); setDegreeName(""); setSelectedTemplateId("");
-      setLookupId(id); setPage("verify");
+      setLookupId(id); navigate("/","verify");
       await verify(id);
       const verificationUrl=new URL(window.location.href);
       verificationUrl.searchParams.set("cert",id);
@@ -260,7 +262,7 @@ export default function App() {
           setNotice(`Certificate was issued on the blockchain, but the email could not be sent: ${emailData.error || "Check the email service configuration."}`);
         } else {
           await loadUniversityHistory(account);
-          setNotice("Certificate issued and email sent with the PDF verification copy.");
+          setNotice("Congratulations! Certificate issued and confirmation email sent with your PDF verification copy.");
         }
       } catch(emailError) {
         setNotice(`Certificate was issued on the blockchain, but the email service could not be reached: ${emailError.message}`);
@@ -408,11 +410,9 @@ export default function App() {
   async function universityAuth(event){
     event.preventDefault();setBusy(true);setNotice("");
     try{
-      const {account}=await getWalletSigner();
       const response=await fetch(API_URL.replace(/\/$/,"")+"/api/university/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:universityEmail,password:universityPassword})});
       const data=await response.json();if(!response.ok)throw new Error(data.error||"University login failed.");
-      if(data.university.wallet.toLowerCase()!==account.toLowerCase())throw new Error("Connect the wallet authorized for this university.");
-      sessionStorage.setItem("certichain-university-token",data.token);setUniversityToken(data.token);setUniversityAccount(data.university);setUniversityTemplates(data.university.templates||[]);setProfileName(data.university.name);setProfileCode(data.university.code);setNotice("University signed in successfully.");
+      sessionStorage.setItem("certichain-university-token",data.token);setUniversityToken(data.token);setUniversityAccount(data.university);setUniversityTemplates(data.university.templates||[]);setProfileName(data.university.name);setProfileCode(data.university.code);setNotice("University signed in successfully.");navigate("/university-office","university");
     }catch(error){setNotice(error.shortMessage||error.message||"University sign-in failed.");}finally{setBusy(false);}
   }
   async function loadUniversityAccount(){
@@ -480,20 +480,22 @@ export default function App() {
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
     const cert=params.get("cert");
+    const initialRoute=routeToPage();setPage(initialRoute);
     const verifyToken=params.get("university_verify");
     if(verifyToken){fetch(API_URL.replace(/\/$/,"")+"/api/university/auth/verify-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:verifyToken})}).then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error||"Email verification failed.");setNotice(data.message||"University email verified.");window.history.replaceState({}, "", window.location.pathname);}).catch(error=>setNotice(error.message));}
-    if (cert) {setPage("verify");setLookupId(cert);window.setTimeout(()=>verify(cert),0)}
+    if (cert) {navigate("/","verify");setLookupId(cert);window.setTimeout(()=>verify(cert),0)}
   },[]);
   useEffect(()=>{if(universityToken){loadUniversityAccount().catch(error=>{setNotice(error.message);logoutUniversity();});}},[universityToken]);
 
-  const navItems=[["verify","Public verification"],["student","Student portal"],["admin","Admin portal"]];
-  const openStudent=async()=>{setPage("student")};
-  const openAdmin=async()=>{setPage("admin");if(wallet) await checkAdmin(wallet)};
+  const navigate=(path,nextPage)=>{window.history.pushState({}, "", path);setPage(nextPage);};
+  useEffect(()=>{const onPop=()=>setPage(routeToPage());window.addEventListener("popstate",onPop);return()=>window.removeEventListener("popstate",onPop);},[]);
+  const navItems=[["verify","Public verification"],["student","Student portal"]];
+  const openStudent=async()=>navigate("/student-portal","student");
   const copyShare=async(url)=>{try{await navigator.clipboard.writeText(url);setNotice("Share link copied.")}catch{setNotice("Browser clipboard permission was not granted.")}};
 
   return <main className="app-shell">
     <nav className="topbar">
-      <a className="brand" href="/" onClick={e=>{e.preventDefault();setPage("verify")}}>Certi<span>Chain</span><small>BLOCKCHAIN CREDENTIALS</small></a>
+      <a className="brand" href="/" onClick={e=>{e.preventDefault();navigate("/","verify")}}>Certi<span>Chain</span><small>BLOCKCHAIN CREDENTIALS</small></a>
       <div className="nav-actions">
         <span className="network"><i/> {networkName}</span>
         <button className="button button-theme" onClick={()=>setTheme(t=>t==="light"?"dark":"light")}>{theme==="light"?"☾ Dark":"☀ Light"}</button>
@@ -501,7 +503,7 @@ export default function App() {
       </div>
     </nav>
     <div className="portal-nav" role="navigation" aria-label="Main sections">
-      {navItems.map(([key,label])=><button key={key} className={page===key?"active":""} onClick={()=>key==="student"?openStudent():key==="admin"?openAdmin():setPage(key)}>{label}{key==="admin"&&<span>RESTRICTED</span>}</button>)}
+      {navItems.map(([key,label])=><button key={key} className={page===key?"active":""} onClick={()=>key==="student"?openStudent():navigate("/","verify")}>{label}</button>)}
     </div>
 
     {page==="verify" && <>
@@ -547,7 +549,7 @@ export default function App() {
               <div className="status-line"><span className={cert.revoked?"status status-revoked":"status status-valid"}>{cert.revoked?"REVOKED":"VERIFIED CREDENTIAL"}</span><span className="muted">{cert.issuedAt}</span></div>
               <h3>Certificate {short(cert.certificateId)}</h3><p>{cert.universityName || "University"}</p>
               
-              <div className="student-cert-actions"><a className="button button-primary" href={ipfsUrl(cert.ipfsCid)} target="_blank" rel="noreferrer">View / download</a><button className="button button-outline" onClick={()=>{setLookupId(cert.certificateId);setPage("verify");verify(cert.certificateId)}}>Verify</button></div>
+              <div className="student-cert-actions"><a className="button button-primary" href={ipfsUrl(cert.ipfsCid)} target="_blank" rel="noreferrer">View / download</a><button className="button button-outline" onClick={()=>{setLookupId(cert.certificateId);navigate("/","verify");verify(cert.certificateId)}}>Verify</button></div>
             </article>)}
             {!emailCertificates.length && <div className="empty-state">No certificates are linked to this email address yet.</div>}
           </div>}
@@ -568,11 +570,11 @@ export default function App() {
       </div></section>
     </>}
 
-    {page==="admin" && <>
-      <section className="hero portal-hero"><div className="eyebrow">ISSUER PORTAL</div><h1>University dashboard.</h1></section>
+    {page==="owner" && <>
+      <section className="hero portal-hero"><div className="eyebrow">PRIVATE PLATFORM CONSOLE</div><h1>Owner dashboard.</h1><p>Restricted to the platform owner wallet.</p></section>
       <section className="workspace"><div className="panel">
-        <div className="panel-heading"><div><div className="eyebrow">DASHBOARD</div><h2>Manage institutions</h2></div><div className="panel-icon">⌑</div></div>
-        {!wallet ? <button className="button button-primary" onClick={connectWallet}>Connect university / platform wallet</button> : owner.toLowerCase()===wallet.toLowerCase() ? <>
+        <div className="panel-heading"><div><div className="eyebrow">PLATFORM CONTROL</div><h2>Manage institutions</h2></div><div className="panel-icon">⌑</div></div>
+        {!wallet ? <button className="button button-primary" onClick={connectWallet}>Connect owner wallet</button> : owner.toLowerCase()===wallet.toLowerCase() ? <>
           <div className="admin-authorized"><span>PLATFORM OWNER ACCESS</span><strong>{short(wallet)}</strong></div>
           <form onSubmit={registerUniversity}>
             <h3>Authorize a university</h3>
@@ -590,7 +592,16 @@ export default function App() {
             <button className="button button-outline button-wide" type="submit" disabled={busy}>Update university status</button>
           </form>
           <div className="admin-security-note">Only the platform owner can authorize or deactivate university wallets. This wallet does not issue university certificates unless separately registered as an issuer.</div>
-        </> : universityProfile?.active ? <>
+
+        </> : <div className="access-denied"><strong>Access restricted</strong><p>This route is reserved for the platform owner.</p><button className="button button-outline" onClick={connectWallet}>Verify owner wallet</button></div>}
+      </div></section>
+    </>}
+
+    {page==="university" && <>
+      <section className="hero portal-hero"><div className="eyebrow">UNIVERSITY ISSUER PORTAL</div><h1>University dashboard.</h1></section>
+      <section className="workspace"><div className="panel">
+        <div className="panel-heading"><div><div className="eyebrow">ISSUER WORKSPACE</div><h2>University account</h2></div><div className="panel-icon">⌑</div></div>
+
           {!universityToken ? <div className="university-auth-card"><h3>University sign in</h3><p>Your account is created and assigned by the CertiChain platform owner.</p><form onSubmit={universityAuth}><label>Official university email</label><input type="email" value={universityEmail} onChange={e=>setUniversityEmail(e.target.value)} autoComplete="username" required/><label>Password</label><input type="password" value={universityPassword} onChange={e=>setUniversityPassword(e.target.value)} autoComplete="current-password" required/><button className="button button-primary button-wide" disabled={busy}>Sign in</button></form></div> : <>
           <div className="admin-authorized"><span>UNIVERSITY ACCOUNT</span><strong>{universityAccount?.name||universityProfile.name}</strong><button className="button button-outline" onClick={logoutUniversity}>Sign out</button></div>
           <div className="tabs university-tabs"><button type="button" className={universityTab==="templates"?"active":""} onClick={()=>setUniversityTab("templates")}>Templates</button><button type="button" className={universityTab==="profile"?"active":""} onClick={()=>setUniversityTab("profile")}>Profile</button><button type="button" className={universityTab==="issue"?"active":""} onClick={()=>setUniversityTab("issue")}>Issue certificate</button><button type="button" className={universityTab==="history"?"active":""} onClick={()=>{setUniversityTab("history");loadUniversityHistory(wallet)}}>Certificate history</button></div>
@@ -601,7 +612,7 @@ export default function App() {
             <label htmlFor="student-name">Student full name</label><input id="student-name" value={studentName} onChange={e=>setStudentName(e.target.value)} placeholder="Student full name" required/>
             <label htmlFor="degree-name">Degree / programme</label><input id="degree-name" value={degreeName} onChange={e=>setDegreeName(e.target.value)} placeholder="e.g. BS Computer Science" required/>
             <label htmlFor="recipient-email">Student email</label><input id="recipient-email" type="email" value={recipientEmail} onChange={e=>setRecipientEmail(e.target.value)} placeholder="student@example.com" autoComplete="email" required/>
-            <label htmlFor="recipient">Student wallet <span className="optional-mark">OPTIONAL</span></label><input id="recipient" value={recipient} onChange={e=>setRecipient(e.target.value)} placeholder="0x…"/>
+            
             {universityTemplates.length>0&&<><label htmlFor="template-select">Choose saved certificate template</label><select id="template-select" defaultValue="" onChange={e=>loadTemplateForIssuance(e.target.value)}><option value="" disabled>Select a template</option>{universityTemplates.map(t=><option key={t._id} value={t._id}>{t.name}{t.active?" (Active)":""}</option>)}</select></>}
             <label htmlFor="document">Certificate file (or replace selected template)</label><input id="document" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={e=>{setFile(e.target.files?.[0]||null);setSelectedTemplateId("");}} required/>
             {file && <p className="file-note">{file.name} · {(file.size/1024/1024).toFixed(2)} MB</p>}
@@ -609,7 +620,7 @@ export default function App() {
           </form>}
           {universityTab==="history" && <section className="university-history"><div className="history-toolbar"><h3>Issued certificates <span>{universityHistory.length}</span></h3><select aria-label="Sort certificate history" value={historySort} onChange={e=>setHistorySort(e.target.value)}><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="number-asc">Certificate number A–Z</option><option value="number-desc">Certificate number Z–A</option></select></div>
             {universityHistory.length ? [...universityHistory].sort((a,b)=>{if(historySort==="oldest") return new Date(a.issuedAt)-new Date(b.issuedAt);if(historySort==="number-asc") return String(a.certificateNumber).localeCompare(String(b.certificateNumber),undefined,{numeric:true});if(historySort==="number-desc") return String(b.certificateNumber).localeCompare(String(a.certificateNumber),undefined,{numeric:true});return new Date(b.issuedAt)-new Date(a.issuedAt);}).map(cert=><article className="history-item" key={cert.certificateId}><div><strong>{cert.certificateNumber}</strong><small>{cert.issuedAt?new Date(cert.issuedAt).toLocaleString():""}</small></div><div className="history-actions"><a href={cert.documentUrl} target="_blank" rel="noreferrer">Document</a><a href={cert.verificationUrl} target="_blank" rel="noreferrer">Verify</a></div></article>) : <div className="empty-state">No certificates issued yet.</div>}</section>}          </> }
-        </> : <div className="access-denied"><strong>Access restricted</strong><p>This wallet is not an active registered university issuer or the platform owner.</p><button className="button button-outline" onClick={()=>checkAdmin(wallet)}>Check authorization again</button></div>}
+
       </div></section>
     </>}
 
