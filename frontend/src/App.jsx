@@ -452,8 +452,11 @@ export default function App() {
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
     const cert=params.get("cert");
+    const verifyToken=params.get("university_verify");
+    if(verifyToken){fetch(API_URL.replace(/\/$/,"")+"/api/university/auth/verify-email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:verifyToken})}).then(async response=>{const data=await response.json();if(!response.ok)throw new Error(data.error||"Email verification failed.");setNotice(data.message||"University email verified.");window.history.replaceState({}, "", window.location.pathname);}).catch(error=>setNotice(error.message));}
     if (cert) {setPage("verify");setLookupId(cert);window.setTimeout(()=>verify(cert),0)}
   },[]);
+  useEffect(()=>{if(universityToken){loadUniversityAccount().catch(error=>{setNotice(error.message);logoutUniversity();});}},[universityToken]);
 
   const navItems=[["verify","Public verification"],["student","Student portal"],["admin","Admin portal"]];
   const openStudent=async()=>{setPage("student")};
