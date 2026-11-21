@@ -51,6 +51,7 @@ export default function App() {
   const [qr,setQr] = useState("");
   const [shareUrl,setShareUrl] = useState("");
   const [studentCertificates,setStudentCertificates] = useState([]);
+  const [publicWalletLookup,setPublicWalletLookup] = useState("");
   const [emailCertificates,setEmailCertificates] = useState([]);
   const [studentEmail,setStudentEmail] = useState("");
   const [studentPassword,setStudentPassword] = useState("");
@@ -282,7 +283,7 @@ export default function App() {
   }
 
   async function loadStudentCertificates(account=wallet) {
-    if (!account) { setNotice("Connect your student wallet."); return; }
+    if (!isAddress(account)) { setNotice("Enter a valid public wallet address."); return; }
     setBusy(true); setNotice("");
     try {
       const contract=getReadContract();
@@ -318,7 +319,7 @@ export default function App() {
         const university=await contract.getUniversity(cert.issuer);
         records.push({certificateId:id,universityId:cert.universityId,universityName:university.name,recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked});
       }
-      setStudentCertificates(records.reverse());
+      setStudentCertificates(records.sort((a,b)=>new Date(b.issuedAt)-new Date(a.issuedAt)));
       if (!records.length) setNotice("No certificates were found for this wallet address.");
     } catch(error) { setNotice(error.shortMessage || error.reason || error.message || "Could not load certificates. Check the RPC provider limits."); }
     finally { setBusy(false); }
@@ -456,19 +457,19 @@ export default function App() {
             {!emailCertificates.length && <div className="empty-state">No certificates are linked to this email address yet.</div>}
           </div>}
         </div>
-        <div className="student-wallet-actions"><span>Or use your connected wallet</span><button className="button button-outline" onClick={connectWallet}>{wallet?short(wallet):"Connect student wallet"}</button></div>
-        {!wallet ? null : <><div className="student-wallet"><span>Connected wallet</span><strong>{wallet}</strong><button className="button button-outline" onClick={()=>loadStudentCertificates(wallet)} disabled={busy}>{busy?"Loading…":"Refresh certificates"}</button></div>
+        <div className="student-wallet-actions">
+          <h3>Public wallet lookup</h3><p>Enter a public address to check certificates without connecting a wallet.</p>
+          <input aria-label="Public wallet address" value={publicWalletLookup} onChange={e=>setPublicWalletLookup(e.target.value)} placeholder="0x wallet address"/>
+          <button className="button button-outline" onClick={()=>loadStudentCertificates(publicWalletLookup)} disabled={busy || !isAddress(publicWalletLookup)}>Find certificates</button>
+        </div>
         <div className="certificate-list">
           {studentCertificates.map(cert=><article className="student-cert" key={cert.certificateId}>
             <div className="status-line"><span className={cert.revoked?"status status-revoked":"status status-valid"}>{cert.revoked?"REVOKED":"VERIFIED CREDENTIAL"}</span><span className="muted">{cert.issuedAt}</span></div>
-            <h3>Certificate {short(cert.certificateId)}</h3>
-            <p>{cert.universityName || "University"} · ID: <strong>{short(cert.universityId)}</strong></p>
-            <p>Issued by <strong>{short(cert.issuer)}</strong></p>
-            <p className="cert-hash">Document hash: {short(cert.documentHash)}</p>
-            <div className="student-cert-actions"><a className="button button-primary" href={ipfsUrl(cert.ipfsCid)} target="_blank" rel="noreferrer">View / download</a><button className="button button-outline" onClick={()=>{const url=new URL(window.location.href);url.searchParams.set("cert",cert.certificateId);url.searchParams.set("contract",contractAddress);copyShare(url.toString())}}>Share certificate</button><button className="button button-outline" onClick={()=>{setLookupId(cert.certificateId);setPage("verify");verify(cert.certificateId)}}>Verify</button></div>
+            <h3>Certificate {short(cert.certificateId)}</h3><p>{cert.universityName || "University"} · {cert.certificateNumber || ""}</p>
+            <div className="student-cert-actions"><a className="button button-primary" href={ipfsUrl(cert.ipfsCid)} target="_blank" rel="noreferrer">View / download</a><button className="button button-outline" onClick={()=>{setLookupId(cert.certificateId);setPage("verify");verify(cert.certificateId)}}>Verify</button></div>
           </article>)}
-          {!studentCertificates.length && wallet && <div className="empty-state">No certificates found for this wallet yet.</div>}
-        </div></>}
+          {!studentCertificates.length && <div className="empty-state">Enter a public wallet address to search.</div>}
+        </div>
       </div></section>
     </>}
 
