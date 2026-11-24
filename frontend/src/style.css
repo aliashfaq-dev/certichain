@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Roboto:wght@400;500;600;700;800&display=swap");
 
 :root{font-family:Manrope,ui-sans-serif,system-ui,sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;font-optical-sizing:auto;font-weight:400;color-scheme:light;--page:#f4f6fa;--surface:#fff;--surface-2:#f8fafc;--surface-3:#eef2f7;--text:#172033;--muted:#657187;--subtle:#8792a5;--border:#dce2eb;--border-strong:#c8d1df;--accent:#315efb;--accent-hover:#244bd4;--accent-soft:#edf1ff;--accent-text:#fff;--success:#16835d;--success-bg:#eaf7f1;--danger:#c33d4b;--danger-bg:#fff0f1;--shadow:0 12px 36px rgba(24,39,75,.07)}
 :root[data-theme="dark"]{color-scheme:dark;--page:#101522;--surface:#171f2e;--surface-2:#1c2637;--surface-3:#242f42;--text:#edf1f8;--muted:#a5b0c2;--subtle:#8491a7;--border:#303c50;--border-strong:#43516a;--accent:#7895ff;--accent-hover:#91a8ff;--accent-soft:#253253;--accent-text:#111a31;--success:#5ac69a;--success-bg:#1c3a34;--danger:#ff7d89;--danger-bg:#42252e;--shadow:0 14px 38px rgba(0,0,0,.2)}
@@ -326,3 +326,37 @@ input,select,textarea,.button{max-width:100%;min-width:0}
 .sidebar .portal-nav button.active:focus-visible .sidebar-label{color:#fff}
 .sidebar .portal-nav button.active:focus-visible{outline:2px solid var(--danger);outline-offset:2px}
 .sidebar-footer .button,.sidebar-collapse{font-family:inherit;font-weight:800}
+
+/* Match the supplied CPK sidebar reference: Roboto, spacious rows, slate text */
+@media(min-width:761px){
+ :root{--certi-sidebar-width:360px}
+ .sidebar{width:var(--certi-sidebar-width);background:#fff;color:#172033;border-right:1px solid #e1e5ec}
+ .sidebar-brand-wrap{min-height:118px;padding:25px 20px 22px}
+ .sidebar,.sidebar button,.sidebar .sidebar-label,.sidebar .brand-name,.sidebar-section-label{font-family:Roboto,Arial,sans-serif}
+ .sidebar .brand-name{font-size:23px;font-weight:800;letter-spacing:-.35px;color:#1e3a8a}
+ .sidebar .brand-name span{color:#1e3a8a}
+ .sidebar .brand small{font-family:Roboto,Arial,sans-serif;font-size:11px;letter-spacing:.1px;color:#334155}
+ .sidebar-section-label{padding:22px 30px 10px;font-size:16px;font-weight:400;color:#64748b}
+ .sidebar .portal-nav{padding:0 15px;gap:5px}
+ .sidebar .portal-nav button{min-height:50px;padding:13px 15px;gap:16px;border-radius:8px;font-family:Roboto,Arial,sans-serif;font-size:18px;font-weight:500;letter-spacing:0;color:#64748b}
+ .sidebar .portal-nav button .sidebar-icon{font-size:18px;color:inherit}
+ .sidebar .portal-nav button:hover{background:#f1f5f9;color:#c62828}
+ .sidebar .portal-nav button:hover .sidebar-label,.sidebar .portal-nav button:focus-visible .sidebar-label{color:#c62828}
+ .sidebar .portal-nav button.active{background:#233f91;color:#fff}
+ .sidebar .portal-nav button.active:hover .sidebar-label,.sidebar .portal-nav button.active:focus-visible .sidebar-label{color:#fff}
+ .sidebar-footer{border-top:1px solid #e1e5ec;padding:14px 15px 0;gap:7px}
+ .sidebar-footer .network{font-family:Roboto,Arial,sans-serif;font-size:14px;padding:8px 10px 12px;color:#64748b}
+ .sidebar-footer .button,.sidebar-collapse{font-family:Roboto,Arial,sans-serif;font-size:17px;font-weight:400;color:#64748b}
+ .sidebar-collapse{width:calc(100% + 30px);margin:12px -15px 0;padding:20px 30px;border-top:1px solid #e1e5ec}
+ .sidebar.collapsed{width:var(--certi-sidebar-rail)}
+ .sidebar.collapsed ~ .app-shell{width:calc(100% - var(--certi-sidebar-rail));margin-left:var(--certi-sidebar-rail)}
+}
+@media(max-width:760px){
+ .sidebar,.sidebar button,.sidebar .sidebar-label,.sidebar .brand-name,.sidebar-section-label{font-family:Roboto,Arial,sans-serif}
+ .sidebar .brand-name{font-size:23px;font-weight:800;letter-spacing:-.35px}
+ .sidebar-section-label{font-size:16px}
+ .sidebar .portal-nav button{font-size:17px;font-weight:500}
+ .sidebar .portal-nav button:hover .sidebar-label,.sidebar .portal-nav button:focus-visible .sidebar-label{color:#c62828}
+ .sidebar .portal-nav button.active{background:#233f91;color:#fff}
+ .sidebar-footer .button,.sidebar-collapse{font-family:Roboto,Arial,sans-serif;font-size:16px;font-weight:400}
+}
