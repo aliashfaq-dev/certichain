@@ -45,6 +45,7 @@ export default function App() {
   const routeToPage=()=>{const path=window.location.pathname;if(path==="/admin"||path.startsWith("/admin/")){window.history.replaceState({}, "", "/");return "verify";}return ({"/student-portal":"student","/platform-control":"owner","/university-office":"university"}[path]||"verify");};
   const [page,setPage] = useState(routeToPage);
   const [theme,setTheme] = useState(() => localStorage.getItem("certichain-theme") || "light");
+  const [sidebarCollapsed,setSidebarCollapsed] = useState(false);
   const [certificateNumber,setCertificateNumber] = useState("");
   const [recipient,setRecipient] = useState("");
   const [recipientEmail,setRecipientEmail] = useState("");
@@ -523,22 +524,28 @@ export default function App() {
     return ()=>{cancelled=true;};
   },[wallet]);
   useEffect(()=>{const onPop=()=>setPage(routeToPage());window.addEventListener("popstate",onPop);return()=>window.removeEventListener("popstate",onPop);},[]);
-  const navItems=[["verify","Public verification"],["student","Student portal"]];
+  const navItems=[["verify","Public verification","◉"],["student","Student portal","▤"]];
   const openStudent=async()=>navigate("/student-portal","student");
   const copyShare=async(url)=>{try{await navigator.clipboard.writeText(url);setNotice("Share link copied.")}catch{setNotice("Browser clipboard permission was not granted.")}};
 
-  return <main className="app-shell">
-    <nav className="topbar">
-      <a className="brand" href="/" onClick={e=>{e.preventDefault();navigate("/","verify")}}>Certi<span>Chain</span><small>BLOCKCHAIN CREDENTIALS</small></a>
-      <div className="nav-actions">
-        <span className="network"><i/> {networkName}</span>
-        <button className="button button-theme" onClick={()=>setTheme(t=>t==="light"?"dark":"light")}>{theme==="light"?"☾ Dark":"☀ Light"}</button>
-        {page!=="student" && <button className="button button-outline" onClick={connectWallet}>{wallet?short(wallet):"Connect wallet"}</button>}
+  return <>
+    <aside className={`sidebar ${sidebarCollapsed?"collapsed":""}`} aria-label="CertiChain navigation">
+      <div className="sidebar-brand-wrap">
+        <a className="brand" href="/" onClick={e=>{e.preventDefault();navigate("/","verify")}}><span className="brand-mark">C</span><span className="brand-name">Certi<span>Chain</span></span><small>BLOCKCHAIN CREDENTIALS</small></a>
       </div>
-    </nav>
-    <div className="portal-nav" role="navigation" aria-label="Main sections">
-      {navItems.map(([key,label])=><button key={key} className={page===key?"active":""} onClick={()=>key==="student"?openStudent():navigate("/","verify")}>{label}</button>)}
-    </div>
+      <div className="sidebar-section-label">Workspace pages</div>
+      <nav className="portal-nav" role="navigation" aria-label="Main sections">
+        {navItems.map(([key,label,icon])=><button key={key} title={sidebarCollapsed?label:undefined} className={page===key?"active":""} onClick={()=>key==="student"?openStudent():navigate("/","verify")}><span className="sidebar-icon" aria-hidden="true">{icon}</span><span className="sidebar-label">{label}</span></button>)}
+      </nav>
+      <div className="sidebar-footer">
+        <div className="network"><i/> <span>{networkName}</span></div>
+        <button className="button button-theme" onClick={()=>setTheme(t=>t==="light"?"dark":"light")}><span className="sidebar-icon" aria-hidden="true">{theme==="light"?"☾":"☀"}</span><span className="sidebar-label">{theme==="light"?"Dark theme":"Light theme"}</span></button>
+        {page!=="student" && <button className="button button-outline wallet-button" onClick={connectWallet}><span className="sidebar-icon" aria-hidden="true">⌁</span><span className="sidebar-label">{wallet?short(wallet):"Connect wallet"}</span></button>}
+        <button className="sidebar-collapse" onClick={()=>setSidebarCollapsed(v=>!v)}><span className="sidebar-icon" aria-hidden="true">{sidebarCollapsed?"»":"«"}</span><span className="sidebar-label">{sidebarCollapsed?"Expand":"Collapse"}</span></button>
+      </div>
+    </aside>
+    <main className="app-shell">
+      <button className="mobile-sidebar-toggle" onClick={()=>setSidebarCollapsed(false)}>☰ <span>Menu</span></button>
 
     {page==="verify" && <>
       <section className="hero">
@@ -660,5 +667,5 @@ export default function App() {
 
     {notice && (/Uploading|Waiting for|Searching blockchain|Confirm the issuance transaction|Transaction submitted/i.test(notice) ? <div className="notice" role="status">{notice}</div> : <div className="alert-backdrop" role="presentation" onClick={()=>setNotice("")}><section className="custom-alert" role="alertdialog" aria-modal="true" aria-label="Notification" onClick={event=>event.stopPropagation()}><div className={/failed|error|invalid|denied|not found|unavailable|could not|rejected|expired|required|must be|not configured/i.test(notice)?"alert-icon alert-error":"alert-icon"}>{/failed|error|invalid|denied|not found|unavailable|could not|rejected|expired|required|must be|not configured/i.test(notice)?"!":"✓"}</div><h3>{/failed|error|invalid|denied|not found|unavailable|could not|rejected|expired|required|must be|not configured/i.test(notice)?"Something went wrong":"Notification"}</h3><p>{notice}</p><button className="button button-primary" onClick={()=>setNotice("")}>Got it</button></section></div>)}
     <footer className="footer"><span>CertiChain © 2026</span></footer>
-  </main>;
+  </main></>;
 }
