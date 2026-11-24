@@ -42,7 +42,7 @@ export default function App() {
   const [statusWalletInput,setStatusWalletInput] = useState("");
   const [statusActive,setStatusActive] = useState(false);
   const [contractAddress,setContractAddress] = useState(new URLSearchParams(window.location.search).get("contract") || CONTRACT_ADDRESS);
-  const routeToPage=()=>({"/student-portal":"student","/platform-control":"owner","/university-office":"university"}[window.location.pathname]||"verify");
+  const routeToPage=()=>{const path=window.location.pathname;if(path==="/admin"||path.startsWith("/admin/")){window.history.replaceState({}, "", "/");return "verify";}return ({"/student-portal":"student","/platform-control":"owner","/university-office":"university"}[path]||"verify");};
   const [page,setPage] = useState(routeToPage);
   const [theme,setTheme] = useState(() => localStorage.getItem("certichain-theme") || "light");
   const [certificateNumber,setCertificateNumber] = useState("");
@@ -121,26 +121,27 @@ export default function App() {
 
   async function connectWallet() {
     try {
-      const {account}=await getWalletSigner();
-      if (page==="owner") {
-        const ok=await checkAdmin(account);
-        if(!ok)throw new Error("Only the platform owner wallet can access this page.");
-      } else if(page==="verify") {
-        const contract=getReadContract();
-        const platformOwner=await contract.owner();
-        if(platformOwner.toLowerCase()===account.toLowerCase()) {
-          setOwner(platformOwner);navigate("/platform-control","owner");setNotice("Platform owner wallet verified.");
-          return;
-        }
-        const issuer=await contract.getUniversity(account);
-        if(issuer.active) {
-          navigate("/university-office","university");
-          setNotice("University issuer wallet detected. Sign in with your official university email.");
-          return;
-        }
-      } else if (page==="student") {
-        await loadStudentCertificates(account);
+      const {account,provider}=await getWalletSigner();
+      const contract=getReadContract();
+      const platformOwner=await contract.owner();
+      if(platformOwner.toLowerCase()===account.toLowerCase()) {
+        setOwner(platformOwner);
+        setUniversityProfile(null);
+        navigate("/platform-control","owner");
+        setNotice("Platform owner wallet verified. Redirected to platform control.");
+        return;
       }
+      const issuer=await contract.getUniversity(account);
+      if(issuer.active) {
+        navigate("/university-office","university");
+        setNotice("University issuer wallet detected. Sign in with your official university email.");
+        return;
+      }
+      if(page==="owner") {
+        setOwner("");
+        throw new Error("Access denied: this wallet is not the platform owner.");
+      }
+      if(page==="student") await loadStudentCertificates(account);
       setNotice("Wallet connected: " + short(account));
     } catch(error) { setNotice(error.shortMessage || error.message || "Wallet connection failed."); }
   }
@@ -505,6 +506,22 @@ export default function App() {
   useEffect(()=>{if(universityToken){loadUniversityAccount().catch(error=>{setNotice(error.message);logoutUniversity();});}},[universityToken]);
 
   const navigate=(path,nextPage)=>{window.history.pushState({}, "", path);setPage(nextPage);};
+  useEffect(()=>{
+    if(!wallet||!isConfigured) return;
+    let cancelled=false;
+    (async()=>{
+      try{
+        const contract=getReadContract();
+        const contractOwner=await contract.owner();
+        if(!cancelled&&contractOwner.toLowerCase()===wallet.toLowerCase()){
+          setOwner(contractOwner);
+          navigate("/platform-control","owner");
+          setNotice("Platform owner wallet detected. Redirected to platform control.");
+        }
+      }catch{}
+    })();
+    return ()=>{cancelled=true;};
+  },[wallet]);
   useEffect(()=>{const onPop=()=>setPage(routeToPage());window.addEventListener("popstate",onPop);return()=>window.removeEventListener("popstate",onPop);},[]);
   const navItems=[["verify","Public verification"],["student","Student portal"]];
   const openStudent=async()=>navigate("/student-portal","student");
