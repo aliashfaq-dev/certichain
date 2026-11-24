@@ -213,4 +213,4 @@ input,select,textarea,.button{max-width:100%;min-width:0}
  .admin-authorized .button{width:100%}
  .history-item>div{max-width:100%;overflow-wrap:anywhere}
 }
-@media(min-width:761px){.app-shell{max-width:1440px;padding:28px clamp(28px,4vw,64px) 40px}.workspace{width:100%}}
+@media(min-width:761px){.app-shell{max-width:none;width:calc(100% - clamp(224px,14.5vw,248px));margin-left:clamp(224px,14.5vw,248px);margin-right:0;padding:28px clamp(28px,4vw,64px) 40px}.workspace{width:100%}}
