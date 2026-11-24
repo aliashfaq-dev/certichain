@@ -407,3 +407,14 @@ input,select,textarea,.button{max-width:100%;min-width:0}
  .app-shell{padding-left:12px;padding-right:12px}
  .sidebar .portal-nav button{padding:11px 12px}
 }
+
+/* Navigation hover should use the site's blue accent, not red */
+.sidebar .portal-nav button:hover{color:var(--accent,#355cff)}
+.sidebar .portal-nav button:hover .sidebar-label,
+.sidebar .portal-nav button:focus-visible .sidebar-label{color:var(--accent,#355cff)}
+.sidebar .portal-nav button:focus-visible{outline-color:var(--accent,#355cff)}
+.sidebar .portal-nav button.active,
+.sidebar .portal-nav button.active:hover{color:#fff}
+.sidebar .portal-nav button.active .sidebar-label,
+.sidebar .portal-nav button.active:hover .sidebar-label,
+.sidebar .portal-nav button.active:focus-visible .sidebar-label{color:#fff}
