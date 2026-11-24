@@ -260,3 +260,56 @@ input,select,textarea,.button{max-width:100%;min-width:0}
   .portal-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible}
   .portal-nav button{width:100%;white-space:normal;line-height:1.3;padding:11px 8px}
 }
+
+/* CPK-inspired full-height vertical sidebar */
+:root{--certi-sidebar-width:260px;--certi-sidebar-rail:78px}
+.sidebar{position:fixed;z-index:100;inset:0 auto 0 0;width:var(--certi-sidebar-width);height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--surface);border-right:1px solid var(--border);color:var(--text);transition:width .22s ease,transform .22s ease;overflow:hidden}
+.sidebar-brand-wrap{padding:26px 20px 22px;border-bottom:1px solid var(--border);min-height:118px;display:flex;align-items:center}
+.sidebar .brand{display:grid;grid-template-columns:42px minmax(0,1fr);grid-template-rows:auto auto;column-gap:12px;align-items:center;text-decoration:none;font-size:0;line-height:1;white-space:normal}
+.brand-mark{grid-row:1 / span 2;width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--accent);color:var(--accent-text);font-size:23px;font-weight:800;letter-spacing:-1px}
+.sidebar .brand-name{font-size:22px;font-weight:800;letter-spacing:-.7px;white-space:nowrap;color:var(--text)}
+.sidebar .brand-name span{color:var(--accent)}
+.sidebar .brand small{grid-column:2;margin-top:5px;font-size:8px;letter-spacing:1.4px;color:var(--muted);white-space:nowrap}
+.sidebar-section-label{padding:22px 26px 12px;font-size:12px;font-weight:600;color:var(--muted)}
+.sidebar .portal-nav{position:static;width:auto;max-width:none;margin:0;padding:0 14px;display:flex;flex-direction:column;align-items:stretch;gap:5px;border:0;border-radius:0;background:transparent;overflow:visible}
+.sidebar .portal-nav::before{display:none}
+.sidebar .portal-nav button{width:100%;min-height:48px;display:flex;align-items:center;justify-content:flex-start;gap:14px;padding:12px 14px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:14px;font-weight:600;text-align:left;white-space:nowrap;box-shadow:none;transition:background .15s ease,color .15s ease}
+.sidebar .portal-nav button:hover{background:var(--surface-2);color:var(--text)}
+.sidebar .portal-nav button.active{background:#233f91;color:#fff;box-shadow:none}
+.sidebar .sidebar-icon{flex:0 0 22px;width:22px;display:inline-flex;align-items:center;justify-content:center;font-size:20px;line-height:1;font-weight:700;color:currentColor}
+.sidebar-footer{margin-top:auto;padding:14px 14px 0;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.sidebar-footer .network{display:flex;align-items:center;gap:10px;padding:8px 10px 12px;font-size:11px;color:var(--muted);white-space:nowrap}
+.sidebar-footer .network i{display:inline-block;width:7px;height:7px;border-radius:50%;background:#68b99e;flex:0 0 7px}
+.sidebar-footer .button{width:100%;min-height:43px;display:flex;align-items:center;justify-content:flex-start;gap:12px;padding:10px 13px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap}
+.sidebar-footer .button .sidebar-icon{font-size:18px}
+.sidebar-collapse{display:flex;align-items:center;justify-content:flex-start;gap:13px;width:calc(100% + 28px);margin:12px -14px 0;padding:17px 25px;border:0;border-top:1px solid var(--border);background:transparent;color:var(--muted);font-size:13px;text-align:left;white-space:nowrap}
+.sidebar-collapse:hover{background:var(--surface-2);color:var(--text)}
+.app-shell{max-width:none;width:calc(100% - var(--certi-sidebar-width));margin:0 0 0 var(--certi-sidebar-width);padding:30px clamp(24px,3.5vw,58px) 40px;min-width:0;transition:width .22s ease,margin-left .22s ease}
+.sidebar.collapsed{width:var(--certi-sidebar-rail)}
+.sidebar.collapsed .sidebar-brand-wrap{padding:24px 18px;justify-content:center}
+.sidebar.collapsed .sidebar .brand{display:block}
+.sidebar.collapsed .brand-mark{grid-row:auto}
+.sidebar.collapsed .sidebar .brand-name,.sidebar.collapsed .brand small,.sidebar.collapsed .sidebar-section-label,.sidebar.collapsed .sidebar-label{display:none}
+.sidebar.collapsed .portal-nav{padding:0 10px}
+.sidebar.collapsed .portal-nav button{justify-content:center;padding:12px 0}
+.sidebar.collapsed .sidebar-footer{padding:12px 8px 0}
+.sidebar.collapsed .sidebar-footer .network{justify-content:center;padding:8px 0}
+.sidebar.collapsed .sidebar-footer .network span{display:none}
+.sidebar.collapsed .sidebar-footer .button{justify-content:center;padding:10px 0}
+.sidebar.collapsed .sidebar-collapse{justify-content:center;padding:17px 0}
+.sidebar.collapsed ~ .app-shell{width:calc(100% - var(--certi-sidebar-rail));margin-left:var(--certi-sidebar-rail)}
+.mobile-sidebar-toggle{display:none}
+@media(max-width:760px){
+ .sidebar{width:100%;max-width:360px;box-shadow:12px 0 40px rgba(20,30,50,.12)}
+ .sidebar.collapsed{display:none}
+ .sidebar-brand-wrap{min-height:118px;padding:25px 20px}
+ .sidebar-section-label{padding:22px 26px 12px}
+ .sidebar .portal-nav{padding:0 14px}
+ .sidebar .portal-nav button{min-height:48px;padding:12px 14px}
+ .sidebar-footer{padding-bottom:0}
+ .sidebar-collapse{margin-top:12px;padding:17px 25px}
+ .app-shell{width:100%;margin:0;padding:20px 16px 28px}
+ .sidebar:not(.collapsed) ~ .app-shell{display:none}
+ .mobile-sidebar-toggle{display:inline-flex;align-items:center;gap:8px;position:fixed;z-index:90;left:12px;top:12px;padding:10px 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);font-size:12px;font-weight:700;box-shadow:0 4px 16px rgba(20,30,50,.08)}
+ .sidebar.collapsed ~ .app-shell .mobile-sidebar-toggle{position:sticky;top:0;margin-bottom:12px}
+}
