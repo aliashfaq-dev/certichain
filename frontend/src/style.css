@@ -313,3 +313,16 @@ input,select,textarea,.button{max-width:100%;min-width:0}
  .mobile-sidebar-toggle{display:inline-flex;align-items:center;gap:8px;position:fixed;z-index:90;left:12px;top:12px;padding:10px 13px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);font-size:12px;font-weight:700;box-shadow:0 4px 16px rgba(20,30,50,.08)}
  .sidebar.collapsed ~ .app-shell .mobile-sidebar-toggle{position:sticky;top:0;margin-bottom:12px}
 }
+
+/* Restore original CertiChain typography and red hover/focus feedback */
+.sidebar,.sidebar button,.sidebar .sidebar-label,.sidebar .brand-name{font-family:Manrope,ui-sans-serif,system-ui,sans-serif}
+.sidebar .brand-name{font-size:24px;font-weight:800;letter-spacing:-1.3px}
+.sidebar .portal-nav button{font-family:inherit;font-size:12px;font-weight:800;letter-spacing:0}
+.sidebar .portal-nav button:hover{background:var(--surface-3);color:var(--text)}
+.sidebar .portal-nav button:hover .sidebar-label,
+.sidebar .portal-nav button:focus-visible .sidebar-label{color:var(--danger)}
+.sidebar .portal-nav button:focus-visible{outline:2px solid var(--danger);outline-offset:2px}
+.sidebar .portal-nav button.active:hover .sidebar-label,
+.sidebar .portal-nav button.active:focus-visible .sidebar-label{color:#fff}
+.sidebar .portal-nav button.active:focus-visible{outline:2px solid var(--danger);outline-offset:2px}
+.sidebar-footer .button,.sidebar-collapse{font-family:inherit;font-weight:800}
