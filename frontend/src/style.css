@@ -289,7 +289,7 @@ input,select,textarea,.button{max-width:100%;min-width:0}
 .sidebar.collapsed .sidebar-brand-wrap{padding:24px 18px;justify-content:center}
 .sidebar.collapsed .sidebar .brand{display:block}
 .sidebar.collapsed .brand-mark{grid-row:auto}
-.sidebar.collapsed .sidebar .brand-name,.sidebar.collapsed .brand small,.sidebar.collapsed .sidebar-section-label,.sidebar.collapsed .sidebar-label{display:none}
+.sidebar.collapsed .brand-name,.sidebar.collapsed .brand small,.sidebar.collapsed .sidebar-section-label,.sidebar.collapsed .sidebar-label{display:none}
 .sidebar.collapsed .portal-nav{padding:0 10px}
 .sidebar.collapsed .portal-nav button{justify-content:center;padding:12px 0}
 .sidebar.collapsed .sidebar-footer{padding:12px 8px 0}
