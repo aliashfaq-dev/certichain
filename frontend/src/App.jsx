@@ -189,9 +189,10 @@ export default function App() {
         certificateId=match.args.certificateId;
         cert=await contract.getCertificate(certificateId);
       }
-      const valid=await contract.verifyCertificate(certificateId);
       const university=await contract.getUniversity(cert.issuer);
-      const data={certificateId,universityId:cert.universityId,universityName:university.name,status:valid?"VALID":"REVOKED",recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked:cert.revoked};
+      // Use the certificate record's revoked flag as the single source of truth for both status labels.
+      const revoked=Boolean(cert.revoked);
+      const data={certificateId,universityId:cert.universityId,universityName:university.name,status:revoked?"REVOKED":"VALID",recipient:cert.recipient,issuer:cert.issuer,documentHash:cert.documentHash,ipfsCid:cert.ipfsCid,issuedAt:new Date(Number(cert.issuedAt)*1000).toLocaleString(),revoked};
       setResult(data);
       const url=new URL(window.location.href); url.searchParams.set("cert",certificateId); url.searchParams.delete("contract");
       setShareUrl(url.toString());
@@ -228,7 +229,7 @@ export default function App() {
       // Do not derive it from the email: the email itself and any reversible identifier stay off-chain.
       const randomRecipientBytes=crypto.getRandomValues(new Uint8Array(20));
       const generatedRecipient="0x"+Array.from(randomRecipientBytes,byte=>byte.toString(16).padStart(2,"0")).join("");
-      const recipientAddress=generatedRecipient;
+      const recipientAddress=recipient.trim()?recipient.trim():generatedRecipient;
       let certificateFile=file;
       if(selectedTemplateId){
         setNotice("Preparing signed university certificate and verification QR…");
