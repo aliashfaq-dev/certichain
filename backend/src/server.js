@@ -208,7 +208,7 @@ app.post("/api/email/certificate-issued", emailLimiter, async (req, res) => {
   const { email, universityName, certificateNumber, certificateId, verificationUrl, documentUrl, documentMimeType, transactionHash, universityWallet, recipientWallet, qrAlreadyEmbedded } = req.body || {};
   const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return res.status(400).json({ error: "A valid student email address is required." });
-  if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.SMTP_FROM) return res.status(503).json({ error: "Email service is not configured. Add Gmail SMTP environment variables." });
+  if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.SMTP_FROM) return res.status(503).json({ error: "Email service is not configured. Add SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS and SMTP_FROM environment variables." });
   if (typeof certificateId !== "string" || !/^0x[0-9a-f]{64}$/i.test(certificateId) ||
       typeof verificationUrl !== "string" || !verificationUrl.startsWith("https://") ||
       typeof universityName !== "string" || typeof certificateNumber !== "string") {
