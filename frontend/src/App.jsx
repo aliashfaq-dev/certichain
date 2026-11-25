@@ -33,6 +33,7 @@ async function hashFile(file) {
 export default function App() {
   const [wallet,setWallet] = useState("");
   const [owner,setOwner] = useState("");
+  const [walletRole,setWalletRole] = useState("public");
   const [universityProfile,setUniversityProfile] = useState(null);
   const [universityWalletInput,setUniversityWalletInput] = useState("");
   const [universityCodeInput,setUniversityCodeInput] = useState("");
@@ -127,6 +128,7 @@ export default function App() {
       const platformOwner=await contract.owner();
       if(platformOwner.toLowerCase()===account.toLowerCase()) {
         setOwner(platformOwner);
+        setWalletRole("owner");
         setUniversityProfile(null);
         navigate("/platform-control","owner");
         setNotice("Platform owner wallet verified. Redirected to platform control.");
@@ -134,10 +136,12 @@ export default function App() {
       }
       const issuer=await contract.getUniversity(account);
       if(issuer.active) {
+        setWalletRole("university");
         navigate("/university-office","university");
         setNotice("University issuer wallet detected. Sign in with your official university email.");
         return;
       }
+      setWalletRole("public");
       if(page==="owner") {
         setOwner("");
         throw new Error("Access denied: this wallet is not the platform owner.");
@@ -497,7 +501,7 @@ export default function App() {
   useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem("certichain-theme",theme)},[theme]);
   useEffect(()=>{
     if (window.ethereum) {
-      const onAccounts=accounts=>{setWallet(accounts?.[0]||"");setOwner("")};
+      const onAccounts=accounts=>{setWallet(accounts?.[0]||"");setOwner("");setWalletRole("public")};
       const onChain=()=>{setWallet("");setOwner("");setNotice("Network changed. Reconnect your wallet.")};
       window.ethereum.on?.("accountsChanged",onAccounts);
       window.ethereum.on?.("chainChanged",onChain);
@@ -532,7 +536,7 @@ export default function App() {
     return ()=>{cancelled=true;};
   },[wallet]);
   useEffect(()=>{const onPop=()=>setPage(routeToPage());window.addEventListener("popstate",onPop);return()=>window.removeEventListener("popstate",onPop);},[]);
-  const navItems=[["verify","Public verification","◉"],["student","Student portal","▤"]];
+  const navItems=[["verify","Public verification","◉"],["student","Student portal","▤"],...(walletRole==="university"?[["university","University office","⌂"]]:[]),...(walletRole==="owner"?[["owner","Platform control","⚙"]]:[])];
   const openStudent=async()=>navigate("/student-portal","student");
   const copyShare=async(url)=>{try{await navigator.clipboard.writeText(url);setNotice("Share link copied.")}catch{setNotice("Browser clipboard permission was not granted.")}};
 
@@ -541,7 +545,7 @@ export default function App() {
       <button className="sidebar-mobile-close" onClick={()=>setMobileSidebarOpen(false)} aria-label="Close navigation">×</button>
       <div className="sidebar-section-label">Workspace pages</div>
       <nav className="portal-nav" role="navigation" aria-label="Main sections">
-        {navItems.map(([key,label,icon])=><button key={key} className={page===key?"active":""} onClick={()=>{key==="student"?openStudent():navigate("/","verify");setMobileSidebarOpen(false)}}><span className="sidebar-icon" aria-hidden="true">{icon}</span><span className="sidebar-label">{label}</span></button>)}
+        {navItems.map(([key,label,icon])=><button key={key} className={page===key?"active":""} onClick={()=>{const routes={verify:["/","verify"],student:["/student-portal","student"],university:["/university-office","university"],owner:["/platform-control","owner"]};navigate(...routes[key]);setMobileSidebarOpen(false)}}><span className="sidebar-icon" aria-hidden="true">{icon}</span><span className="sidebar-label">{label}</span></button>)}
       </nav>
       <div className="sidebar-footer">
         <div className="network"><i/> <span>{networkName}</span></div>
