@@ -409,6 +409,13 @@ export default function App() {
       if (!isAddress(universityWalletInput)) throw new Error("Enter a valid university wallet address.");
       if (!universityCodeInput.trim() || !universityNameInput.trim()) throw new Error("Both university code and name are required.");
       const universityId=keccak256(toUtf8Bytes(universityCodeInput.trim().toUpperCase()));
+      // Preflight the on-chain registry so a wallet already assigned to another
+      // university ID gets a readable message instead of a raw custom-error selector.
+      const existingUniversity=await contract.getUniversity(universityWalletInput);
+      const hasExistingUniversity=existingUniversity.universityId.toLowerCase()!==('0x'+'0'.repeat(64));
+      if(hasExistingUniversity && existingUniversity.universityId.toLowerCase()!==universityId.toLowerCase()) {
+        throw new Error("This wallet is already registered with a different university code. Use the original code for this wallet, or register a new wallet address.");
+      }
       const email=ownerUniversityEmail.trim().toLowerCase();
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter the university's official email address.");
       if(ownerUniversityPassword.length<10) throw new Error("Set an initial password of at least 10 characters.");
