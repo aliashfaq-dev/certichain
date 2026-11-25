@@ -528,8 +528,19 @@ export default function App() {
         const contractOwner=await contract.owner();
         if(!cancelled&&contractOwner.toLowerCase()===wallet.toLowerCase()){
           setOwner(contractOwner);
+          setWalletRole("owner");
           navigate("/platform-control","owner");
           setNotice("Platform owner wallet detected. Redirected to platform control.");
+          return;
+        }
+        const university=await contract.getUniversity(wallet);
+        if(!cancelled&&university.active){
+          setWalletRole("university");
+          navigate("/university-office","university");
+          setNotice("University issuer wallet detected. Sign in to the university office.");
+        }else if(!cancelled){
+          setWalletRole("public");
+          setOwner("");
         }
       }catch{}
     })();
